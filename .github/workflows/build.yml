@@ -63,7 +63,14 @@ jobs:
               # .github/ or README.md builds nothing rather than everything.
               pkgs="$(printf '%s\n' "$changed" \
                       | cut -d/ -f1 | sort -u \
-                      | while read -r d; do [ -f "$d/package.conf" ] && echo "$d"; done)"
+                      | while read -r d; do
+                          # if/then, not &&: with no package among the changed
+                          # directories the loop's last command is a failing
+                          # test, that becomes the substitution's status, and
+                          # bash -e kills a step whose correct answer is "no
+                          # packages changed".
+                          if [ -f "$d/package.conf" ]; then echo "$d"; fi
+                        done)"
           fi
 
           # Enrolment gates publishing, not building: a staged package still
