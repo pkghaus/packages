@@ -90,11 +90,7 @@ jobs:
       fail-fast: false
       matrix:
         package: ${{ fromJSON(needs.plan.outputs.packages) }}
-    # An exact tag, not @v1, until this repository has proved the
-    # working_directory path in real builds. Moving v1 ships it to all 27
-    # single-package callers at once, and a bug here would reach them
-    # before it reached us.
-    uses: pkghaus/action-debian-build/.github/workflows/build.yml@v1.3.0
+    uses: pkghaus/action-debian-build/.github/workflows/build.yml@v1
     with:
       working_directory: ${{ matrix.package }}
     secrets: inherit
