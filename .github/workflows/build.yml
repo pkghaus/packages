@@ -29,8 +29,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # A pull request needs the base to diff against; a tag needs nothing.
-          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
+          # Always full, never a conditional. A pull request needs the base to
+          # diff against, and the obvious spelling of that condition is a trap:
+          # in a GitHub expression `a && 0 || 1` is ALWAYS 1, because 0 is falsy
+          # and the || takes over. That shipped once, gave every pull request a
+          # shallow clone, and the diff below failed into a green run that built
+          # nothing.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Resolve the package set
@@ -46,9 +51,17 @@ jobs:
               [ -f "$pkgs/package.conf" ] || {
                   echo "::error::tag $REF_NAME names no package directory" >&2; exit 1; }
           else
+              # The diff is taken on its own line, not inside the pipeline
+              # below. In a pipeline its failure is invisible: the substitution
+              # comes back empty, nothing is planned, and the run goes green
+              # having built nothing. Which is exactly what happened.
+              changed="$(git diff --name-only "$BASE_SHA"...HEAD)" || {
+                  echo "::error::cannot diff against base $BASE_SHA" >&2
+                  exit 1
+              }
               # Only directories that are themselves packages, so a change to
               # .github/ or README.md builds nothing rather than everything.
-              pkgs="$(git diff --name-only "$BASE_SHA"...HEAD \
+              pkgs="$(printf '%s\n' "$changed" \
                       | cut -d/ -f1 | sort -u \
                       | while read -r d; do [ -f "$d/package.conf" ] && echo "$d"; done)"
           fi
