@@ -11,7 +11,7 @@ Debian stable, testing and unstable on amd64 and arm64, and published to
 ## Layout
 
 ```
-croc/
+<package>/
 ├── package.conf        UPSTREAM and VERSION: the upstream repo and the tag to build
 └── debian/             the packaging: control, rules, changelog, copyright, tests
 ```
@@ -24,7 +24,7 @@ direction: every line in `packages.txt` must have a matching directory.
 ## Building one locally
 
 ```sh
-cd croc
+cd <package>
 docker run --rm --volume "$PWD:/target" --workdir /target \
     ghcr.io/pkghaus/deb-builder:trixie
 ```
@@ -38,8 +38,8 @@ suites. Pull the image first: a stale one can predate the pipeline's contract.
 Tags are namespaced by package, and the version matches `debian/changelog`:
 
 ```sh
-git tag -s croc/v11.3.4-1 -m "croc 11.3.4-1"
-git push origin croc/v11.3.4-1
+git tag -s <package>/vX.Y.Z-N -m "<package> X.Y.Z-N"
+git push origin <package>/vX.Y.Z-N
 ```
 
 That builds the package for every suite and architecture, runs its DEP-8 tests,
