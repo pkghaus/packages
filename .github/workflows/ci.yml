@@ -20,6 +20,9 @@ jobs:
       - name: Enrolment matches the tree
         run: scripts/check-enrolment.sh
 
+      - name: Test
+        run: tests/run.sh
+
       - name: shellcheck
         run: |
           docker run --rm \

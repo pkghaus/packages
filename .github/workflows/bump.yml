@@ -1,0 +1,247 @@
+name: Bump upstream versions
+
+# Opens one pull request per package whose upstream has released. It does the
+# mechanical half only: package.conf's VERSION and a debian/changelog entry. The
+# signed tag that actually releases stays manual, because no GitHub API signs a
+# tag and a signing key never goes in CI.
+#
+# Every upstream tag is tracked. No staleness threshold, no filtering, a
+# different tag string is the whole rule. croc cut six releases in five days in
+# August; that is the known cost of the policy.
+#
+# Why the pull request carries no checks, and why that is not a gap: a pull
+# request opened with GITHUB_TOKEN triggers no workflows, so build.yml would
+# never run on it. The verify job below builds and DEP-8 tests the bumped tree
+# BEFORE the pull request is opened, and a package that fails never gets one.
+# The run is linked from the body.
+
+on:
+  schedule:
+    # Every six hours, matching the archive's own watcher so the two never
+    # disagree about how current their view is. Affordable only because the plan
+    # skips a package whose version already has an open pull request: without
+    # that, an unmerged bump would rebuild three suites on every run.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bump
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Find upstream releases
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_work: ${{ steps.plan.outputs.has_work }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Resolve every enrolled package against its upstream
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          matrix="$(scripts/plan-bumps.sh)"
+          count="$(printf '%s' "$matrix" | grep -o '"package"' | wc -l)"
+          # has_work, not a count comparison: an output that never got set is
+          # empty, and empty != '0' is TRUE, which would start the matrix with no
+          # vectors and fail it.
+          has_work=false
+          [ "$count" -gt 0 ] && has_work=true
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+          printf 'has_work=%s\n' "$has_work" >> "$GITHUB_OUTPUT"
+          printf '%s package(s) behind upstream: %s\n' "$count" "$matrix" >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    name: ${{ matrix.entry.package }} ${{ matrix.entry.tag }} / ${{ matrix.suite }}
+    needs: plan
+    if: needs.plan.outputs.has_work == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: ${{ fromJSON(needs.plan.outputs.matrix) }}
+        suite: [trixie, testing, unstable]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Apply the bump
+        env:
+          PKG: ${{ matrix.entry.package }}
+          TAG: ${{ matrix.entry.tag }}
+        run: scripts/bump-upstream.sh "$PKG" "$TAG"
+
+      # The action operates on the working tree, not on a ref, which is what
+      # makes verifying an uncommitted bump possible at all. amd64 only here;
+      # the full three suites by two architectures runs when the tag is pushed.
+      - name: Build and DEP-8 test the bumped package
+        uses: pkghaus/action-debian-build@v1
+        with:
+          SUITE: ${{ matrix.suite }}
+          WORKING_DIRECTORY: ${{ matrix.entry.package }}
+
+  report:
+    name: Drift dashboard
+    needs: [plan, verify, open]
+    # always(): a run whose verification failed is exactly the run whose outcome
+    # nobody would otherwise see. No pull request opens for such a package, and
+    # a red run in a repository nobody watches notifies no one.
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Open, update or close the dashboard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          MATRIX: ${{ needs.plan.outputs.matrix }}
+          HAS_WORK: ${{ needs.plan.outputs.has_work }}
+          VERIFY: ${{ needs.verify.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title='Upstream release drift'
+          # Exact title match, not a search query: search is fuzzy and would
+          # eventually latch onto the wrong issue.
+          number="$(gh issue list --repo "$REPO" --state open --json number,title \
+              --jq ".[] | select(.title == \"$title\") | .number" | head -n1)"
+
+          if [ "$HAS_WORK" != "true" ]; then
+              if [ -n "$number" ]; then
+                  gh issue close "$number" --repo "$REPO" \
+                      --comment "Every enrolled package matches its newest upstream release. Checked by $RUN_URL"
+              else
+                  echo "nothing to report"
+              fi
+              exit 0
+          fi
+
+          scripts/drift-report.sh "$MATRIX" "$VERIFY" "$RUN_URL" > body.md
+          if [ -z "$number" ]; then
+              # A mention notifies only in newly created content, and being
+              # mentioned subscribes the team to the issue, which is what makes
+              # later edits reach them without mentioning again.
+              { printf '@pkghaus/maintainers\n\n'; cat body.md; } > opening.md
+              gh issue create --repo "$REPO" --title "$title" --body-file opening.md
+          else
+              gh issue edit "$number" --repo "$REPO" --body-file body.md
+          fi
+
+  open:
+    name: PR for ${{ matrix.entry.package }}
+    needs: [plan, verify]
+    if: needs.plan.outputs.has_work == 'true' && needs.verify.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Apply the bump
+        id: bump
+        env:
+          PKG: ${{ matrix.entry.package }}
+          TAG: ${{ matrix.entry.tag }}
+        run: |
+          out="$(scripts/bump-upstream.sh "$PKG" "$TAG")"
+          printf '%s\n' "$out"
+          # The last line matching, not the first: stderr is merged nowhere here,
+          # but a future warning ahead of the result would otherwise be parsed as
+          # the package name. No match is a hard failure rather than an empty
+          # version reaching a pull request title.
+          line="$(printf '%s\n' "$out" | grep ' -> ' | tail -1)"
+          if [ -z "$line" ]; then
+            echo "::error::bump-upstream.sh exited 0 without a result line" >&2
+            exit 1
+          fi
+          printf 'version=%s\n' "${line##* }" >> "$GITHUB_OUTPUT"
+
+      - name: Create the branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: bump/${{ matrix.entry.package }}/${{ steps.bump.outputs.version }}
+        run: |
+          base="$(git rev-parse HEAD)"
+          # A branch left by an earlier run for the same version is reused: the
+          # commit below replaces its tree wholesale, so a retry converges.
+          gh api "repos/$REPO/git/refs" -f "ref=refs/heads/$BRANCH" -f "sha=$base" \
+            || gh api "repos/$REPO/git/refs/heads/$BRANCH" -X PATCH -f "sha=$base" -F force=true
+          git checkout -q -b "$BRANCH"
+
+      - name: Commit, signed
+        uses: pkghaus/signed-commit@v1
+        with:
+          workdir: .
+          branch: bump/${{ matrix.entry.package }}/${{ steps.bump.outputs.version }}
+          message: "${{ matrix.entry.package }}: new upstream release ${{ steps.bump.outputs.version }}"
+          pathspec: |
+            ${{ matrix.entry.package }}/package.conf
+            ${{ matrix.entry.package }}/debian/changelog
+          token: ${{ github.token }}
+
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: bump/${{ matrix.entry.package }}/${{ steps.bump.outputs.version }}
+          PKG: ${{ matrix.entry.package }}
+          TAG: ${{ matrix.entry.tag }}
+          VERSION: ${{ steps.bump.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          cat > body.md <<'EOF'
+          Upstream released `@TAG@`.
+
+          This rewrites `@PKG@/package.conf` and adds a `debian/changelog` entry,
+          and nothing else. Anything further this release needs, a build
+          dependency or an install path or a version stamp whose symbol moved, is
+          not in here.
+
+          **This pull request carries no checks, and that is expected.** A pull
+          request opened with `GITHUB_TOKEN` triggers no workflows. The bump was
+          built and DEP-8 tested across all three suites before this was opened,
+          and a package that failed never gets a pull request at all:
+
+          @RUN_URL@
+
+          Merging is not releasing. The archive publishes on a signed tag:
+
+              git tag -s @PKG@/v@VERSION@ -m "@PKG@ @VERSION@"
+              git push origin @PKG@/v@VERSION@
+
+          That tag runs the full three suites by two architectures with DEP-8,
+          then tells the archive to ingest.
+          EOF
+          sed -i "s|@TAG@|$TAG|g; s|@PKG@|$PKG|g; s|@VERSION@|$VERSION|g; s|@RUN_URL@|$RUN_URL|g" body.md
+
+          existing="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open \
+                        --json url --jq '.[0].url // empty')"
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --title "$PKG: new upstream release $VERSION" --body-file body.md
+            echo "updated $existing"
+          else
+            gh pr create --repo "$REPO" --head "$BRANCH" --base master \
+              --title "$PKG: new upstream release $VERSION" --body-file body.md
+          fi
