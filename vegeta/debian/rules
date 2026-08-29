@@ -1,0 +1,35 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+export GOFLAGS := -trimpath
+export GOCACHE := $(CURDIR)/.gocache
+export GOPATH := $(CURDIR)/.gopath
+
+%:
+	dh $@
+
+# Upstream's Makefile stamps these three through ldflags; unstamped, vegeta
+# reports an empty Version and Commit. The commit comes from the upstream
+# clone the builder makes, and the date from the changelog, so a rebuild of
+# the same revision produces the same string.
+VEGETA_COMMIT := $(shell git rev-parse HEAD 2>/dev/null)
+VEGETA_DATE := $(shell date -u -d @$(SOURCE_DATE_EPOCH) +%Y-%m-%dT%H:%M:%SZ%z)
+
+override_dh_auto_build:
+	go build -buildmode=pie \
+		-ldflags "-X main.Version=v$(DEB_VERSION_UPSTREAM) -X main.Commit=$(VEGETA_COMMIT) -X main.Date=$(VEGETA_DATE)" \
+		-o vegeta .
+
+# Upstream tests need network and external services; function is covered
+# by the packaging smoke test instead.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 vegeta debian/vegeta/usr/bin/vegeta
+
+override_dh_auto_clean:
+	rm -rf $(CURDIR)/.gocache $(CURDIR)/.gopath vegeta
+
+# dwz has nothing useful to do on Go binaries.
+override_dh_dwz:

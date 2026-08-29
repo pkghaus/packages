@@ -1,0 +1,22 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	cargo clean
+
+override_dh_auto_build:
+	cargo build --release
+
+execute_after_dh_auto_build:
+	mkdir completions
+	target/release/zola completion bash > completions/zola.bash
+	target/release/zola completion fish > completions/zola.fish
+	target/release/zola completion zsh > completions/_zola
+
+override_dh_auto_install:
+	install -Dm0755 "target/release/zola" "debian/zola/usr/bin/zola"
+	install -Dm0644 "completions/zola.bash" "debian/zola/usr/share/bash-completion/completions/zola"
+	install -Dm0644 "completions/zola.fish" "debian/zola/usr/share/fish/vendor_completions.d/zola.fish"
+	install -Dm0644 "completions/_zola" "debian/zola/usr/share/zsh/vendor-completions/_zola"

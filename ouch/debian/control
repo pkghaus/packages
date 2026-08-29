@@ -1,0 +1,20 @@
+Source: ouch
+Section: utils
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ libclang-dev,
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://github.com/ouch-org/ouch
+
+Package: ouch
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: painless compression and decompression
+ ouch compresses and decompresses archives with a single consistent
+ interface, inferring formats from file extensions: tar, zip, gzip,
+ bzip2, xz, zstd, lz4 and combinations thereof.

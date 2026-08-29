@@ -1,0 +1,88 @@
+#!/bin/bash
+#
+# A real transfer through a relay this test starts itself. croc's own suite
+# is skipped at build time because it reaches for public relays, so function
+# was covered only by a procedure a human had to read and perform. This is
+# that procedure as code.
+#
+# Everything is local: the relay binds loopback, --no-local stops the sender
+# finding the receiver by LAN discovery and bypassing the relay under test,
+# and the code phrase is fixed so nothing has to be scraped from output.
+#
+# The code goes through CROC_SECRET, not --code. croc 11 refuses a receive
+# code on the command line unless "classic mode" is toggled on, because an
+# argument is visible in the process list to every local user; the
+# environment variable is the supported way to script it. Note croc's own
+# sender output still prints the classic form as the instruction to paste.
+#
+# bash, not sh, for /dev/tcp: the readiness check is a real connection to the
+# relay's port rather than a slept guess, and nothing else in a minimal
+# container is guaranteed to open a socket.
+
+set -euo pipefail
+
+CODE=dep8-croc-transfer
+PORT=19009
+PASS=dep8pass
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+relay_pid=""
+cleanup() { [ -n "$relay_pid" ] && kill "$relay_pid" 2>/dev/null; return 0; }
+trap cleanup EXIT
+
+# 8 MiB of incompressible data: big enough to cross the wire in chunks, and
+# random so a zero-filled file cannot pass by accident.
+mkdir -p send recv
+head -c 8388608 /dev/urandom > send/payload.bin
+want="$(sha256sum send/payload.bin | cut -d' ' -f1)"
+
+croc --pass "$PASS" relay --ports "$PORT,19010,19011,19012,19013" &
+relay_pid=$!
+
+for _ in $(seq 60); do
+    if (exec 3<>/dev/tcp/127.0.0.1/"$PORT") 2>/dev/null; then
+        ready=1
+        break
+    fi
+    sleep 0.5
+done
+[ "${ready:-0}" = 1 ] || { echo "relay never listened on $PORT" >&2; exit 1; }
+
+CROC_SECRET="$CODE" croc --pass "$PASS" --relay "127.0.0.1:$PORT" --yes \
+     send --no-local send/payload.bin &
+send_pid=$!
+
+# The sender has to be registered with the relay before the receiver asks
+# for it, or the receiver waits for a sender that is not there yet.
+sleep 3
+
+# Bounded: a receiver whose code does not match the sender waits forever,
+# and a test that hangs to the harness timeout says far less than one that
+# fails with a reason.
+cd recv
+if ! CROC_SECRET="$CODE" timeout 120 croc --pass "$PASS" \
+        --relay "127.0.0.1:$PORT" --yes --overwrite; then
+    echo "the receiver did not complete within 120s" >&2
+    exit 1
+fi
+cd "$WORK"
+wait "$send_pid"
+
+[ -f recv/payload.bin ] || { echo "the receiver produced no file" >&2; ls -la recv >&2; exit 1; }
+got="$(sha256sum recv/payload.bin | cut -d' ' -f1)"
+[ "$want" = "$got" ] || { echo "checksum mismatch: sent $want, got $got" >&2; exit 1; }
+
+# The binary must also know what it is. Cheap, and it catches a package that
+# shipped the wrong build entirely, which a transfer test cannot see: any croc
+# talks to any croc.
+want="$(dpkg-query -W -f='${Version}' croc | sed 's/-[^-]*$//')"
+reported="$(croc --version 2>&1)"
+printf '%s\n' "$reported"
+case "$reported" in
+    *"$want"*) ;;
+    *) echo "croc --version [$reported] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+echo "transferred 8 MiB through a local relay, sha256 $got, version $want"

@@ -1,0 +1,3 @@
+Tests: query-json
+Depends: fx
+Restrictions: allow-stderr

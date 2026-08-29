@@ -1,0 +1,24 @@
+#!/usr/bin/make -f
+
+export GOFLAGS := -trimpath
+export GOCACHE := $(CURDIR)/.gocache
+export GOPATH := $(CURDIR)/.gopath
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	go build -buildmode=pie -o fx .
+
+# Upstream tests need network and external services; function is covered
+# by the packaging smoke test instead.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 fx debian/fx/usr/bin/fx
+
+override_dh_auto_clean:
+	rm -rf $(CURDIR)/.gocache $(CURDIR)/.gopath fx
+
+# dwz has nothing useful to do on Go binaries.
+override_dh_dwz:

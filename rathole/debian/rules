@@ -1,0 +1,16 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	cargo clean
+
+override_dh_auto_build:
+	# Upstream's 2023 lockfile pins time 0.3.29, which no longer compiles
+	# on current rustc (E0282); 0.3.36 is the semver-compatible fix.
+	cargo update -p time --precise 0.3.36
+	cargo build --release
+
+override_dh_auto_install:
+	install -Dm0755 target/release/rathole debian/rathole/usr/bin/rathole

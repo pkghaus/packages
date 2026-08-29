@@ -1,0 +1,3 @@
+Tests: cache-images
+Depends: betterlockscreen, xvfb, xauth
+Restrictions: allow-stderr

@@ -1,0 +1,18 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+# Upstream's Makefile test target runs the full cargo test suite, which
+# needs network and fixtures; function is covered by the packaging smoke
+# test instead.
+override_dh_auto_test:
+
+override_dh_auto_clean:
+	cargo clean
+
+override_dh_auto_build:
+	cargo build --release -p lychee
+
+override_dh_auto_install:
+	install -Dm0755 target/release/lychee debian/lychee/usr/bin/lychee

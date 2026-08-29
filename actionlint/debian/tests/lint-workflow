@@ -1,0 +1,64 @@
+#!/bin/bash
+#
+# Lint a workflow that is correct and one that is not. Upstream's own suite is
+# skipped at build time, so nothing here proved the binary works.
+#
+# actionlint is a static checker with no network and no state, which makes a
+# deterministic gate easy: it should accept a valid workflow and reject a
+# specific, named defect in an invalid one. Both directions, because a binary
+# that rejected everything would pass a test that only fed it the bad file, and
+# one that checked nothing would pass a test that only fed it the good one.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+mkdir -p .github/workflows
+
+cat > .github/workflows/good.yml <<'YML'
+name: good
+on:
+  push:
+    branches: [master]
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo hello
+YML
+
+# runs-on names a label that does not exist, which actionlint knows about and a
+# plain YAML parser does not. That distinction is the point: it proves the
+# checker is doing its own job rather than just parsing.
+cat > .github/workflows/bad.yml <<'YML'
+name: bad
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-not-a-real-runner
+    steps:
+      - run: echo hello
+YML
+
+rc=0
+out="$(actionlint .github/workflows/good.yml 2>&1)" || rc=$?
+printf '%s\n' "$out"
+[ "$rc" -eq 0 ] || { echo "actionlint exited $rc on a valid workflow" >&2; exit 1; }
+
+rc=0
+out="$(actionlint .github/workflows/bad.yml 2>&1)" || rc=$?
+printf '%s\n' "$out"
+[ "$rc" -ne 0 ] || { echo "actionlint exited 0 on a workflow with an invalid runner label" >&2; exit 1; }
+printf '%s' "$out" | grep -q 'ubuntu-not-a-real-runner' \
+    || { echo "actionlint failed but never named the offending label" >&2; exit 1; }
+
+want="$(dpkg-query -W -f='${Version}' actionlint | sed 's/-[^-]*$//')"
+got="$(actionlint -version 2>&1)"
+printf '%s\n' "$got"
+case "$got" in
+    *"$want"*) ;;
+    *) echo "actionlint -version [$got] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+echo "linted both directions, version $want"

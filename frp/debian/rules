@@ -1,0 +1,38 @@
+#!/usr/bin/make -f
+
+# frp's go.mod asks for a newer Go than the suite ships; let the Go tool
+# fetch that toolchain, the same trade the builder makes for Rust.
+export GOTOOLCHAIN := auto
+export GOFLAGS := -trimpath
+export GOCACHE := $(CURDIR)/.gocache
+export GOPATH := $(CURDIR)/.gopath
+
+%:
+	dh $@
+
+# The source tag ships no prebuilt web-dashboard assets (upstream builds
+# them with Node before its releases); stub them so go:embed resolves.
+# The tunneling core is unaffected; the browser dashboards are not part
+# of this build.
+execute_before_dh_auto_build:
+	mkdir -p web/frpc/dist web/frps/dist
+	printf 'frp built from source without the web dashboard assets.\n' > web/frpc/dist/index.html
+	printf 'frp built from source without the web dashboard assets.\n' > web/frps/dist/index.html
+
+override_dh_auto_build:
+	go build -buildmode=pie -o frpc ./cmd/frpc
+	go build -buildmode=pie -o frps ./cmd/frps
+
+# Upstream's test suite needs privileged networking; function is covered
+# by the packaging smoke test (frpc/frps end-to-end tunnel) instead.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 frpc debian/frp/usr/bin/frpc
+	install -Dm0755 frps debian/frp/usr/bin/frps
+
+override_dh_auto_clean:
+	rm -rf $(CURDIR)/.gocache $(CURDIR)/.gopath frpc frps
+
+# dwz has nothing useful to do on Go binaries.
+override_dh_dwz:

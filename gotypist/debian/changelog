@@ -1,0 +1,30 @@
+gotypist (0.8.2-1) unstable; urgency=medium
+
+  * New upstream release
+  * Migrate to the pkghaus build pipeline
+  * Build with the suite's Go against the vendored dependencies; the
+    dh-golang machinery is no longer needed
+  * Build for any architecture
+
+ -- pkg.haus archive <archive@pkg.haus>  Sat, 15 Aug 2026 10:18:49 +0200
+
+gotypist (0.8.1-1) unstable; urgency=medium
+
+  * New upstream release
+  * Bullseye is now stable
+  * Update debhelper
+  * Improve Debian version and package name handling in Github Action
+
+ -- Martin Simon <me@martinsimon.me>  Sat, 06 Nov 2020 00:00:00 +0000
+
+gotypist (0.8.0-2) unstable; urgency=medium
+
+  * Version 0.8.0
+
+ -- Martin Simon <me@martinsimon.me>  Tue, 26 May 2020 00:00:00 +0000
+
+gotypist (0.8.0-1) unstable; urgency=medium
+
+  * Version 0.8.0
+
+ -- Martin Simon <me@martinsimon.me>  Sat, 16 May 2020 00:00:00 +0000

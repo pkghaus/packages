@@ -1,0 +1,19 @@
+Source: viddy
+Section: utils
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://github.com/sachaos/viddy
+
+Package: viddy
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: modern watch command with history and diffs
+ viddy re-runs a command on an interval like watch(1), adding
+ scrollable time-machine history, diff highlighting between runs
+ and search.

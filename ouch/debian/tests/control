@@ -1,0 +1,3 @@
+Tests: roundtrip
+Depends: ouch, coreutils
+Restrictions: allow-stderr

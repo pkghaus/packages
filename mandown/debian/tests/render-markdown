@@ -1,0 +1,62 @@
+#!/bin/bash
+#
+# Render Markdown through the non-interactive path and check the structure that
+# comes out. mandown is a pager, so the binary spends most of its life in a
+# terminal UI that a testbed cannot drive; -o is the one path that produces
+# something inspectable, and it is enough to prove the parser and the renderer
+# both work.
+#
+# The document arrives on stdin. That is not incidental: -f names a file for
+# the pager, and the converter reads standard input, so `mdn -f doc.md -o out`
+# writes an empty body while `cat doc.md | mdn -o out` renders it. Written from
+# observed behaviour after the first version got this wrong.
+#
+# Headings, emphasis and strong are asserted separately because they take
+# different paths through the parser, and a build where one of them regressed
+# would still produce a plausible non-empty document.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+cat > doc.md <<'MD'
+# NAME
+
+foo - does a thing
+
+## SYNOPSIS
+
+**foo** [options]
+
+## DESCRIPTION
+
+A paragraph with *emphasis*.
+MD
+
+mdn -o out.html < doc.md >/dev/null 2>&1 \
+    || { echo "mdn failed to render a document on stdin" >&2; exit 1; }
+[ -s out.html ] || { echo "mdn produced no output" >&2; exit 1; }
+
+cat out.html
+
+# An empty body is what a broken converter produces, and it is still valid
+# HTML, so check for the content rather than the shape.
+grep -q '<h1>NAME</h1>'        out.html || { echo "the level-1 heading did not render" >&2; exit 1; }
+grep -q '<h2>SYNOPSIS</h2>'    out.html || { echo "a level-2 heading did not render" >&2; exit 1; }
+grep -q '<h2>DESCRIPTION</h2>' out.html || { echo "the second level-2 heading did not render" >&2; exit 1; }
+grep -q '<strong>foo'          out.html || { echo "strong emphasis did not render" >&2; exit 1; }
+grep -q '<em>emphasis'         out.html || { echo "emphasis did not render" >&2; exit 1; }
+grep -q 'does a thing'         out.html || { echo "body text did not survive" >&2; exit 1; }
+
+# Markdown source markers must not reach the output.
+if grep -qE '^#|\*\*foo' out.html; then
+    echo "raw Markdown reached the rendered output" >&2
+    exit 1
+fi
+
+# No version assertion here, unlike every other test in the fleet: mdn has no
+# version flag. --version prints nothing and -v is parsed as something else,
+# so there is no string to compare against the packaged version. The rendering
+# assertions above are the whole gate.
+echo "rendered headings, emphasis and body text through the stdin path"

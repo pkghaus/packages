@@ -1,0 +1,47 @@
+#!/bin/bash
+#
+# Compile a diagram and check what comes out is really SVG. d2 has a layout
+# engine and a renderer behind it, so "the binary ran" says very little; the
+# output has to be inspected.
+#
+# Asserted: the file is SVG by its root element, it is not the empty shell a
+# broken layout pass produces, and both node labels reached it. A renderer that
+# emitted a valid but blank canvas would satisfy a size check and fails here.
+#
+# ELK is not requested. The default layout ships in the binary, while ELK is
+# fetched at runtime, which would make this a network test.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+printf 'alpha -> beta: carries\n' > in.d2
+
+d2 in.d2 out.svg 2>&1 || { echo "d2 failed to compile a one-line diagram" >&2; exit 1; }
+[ -s out.svg ] || { echo "d2 produced no output" >&2; exit 1; }
+
+head -c 400 out.svg
+echo
+
+grep -q '<svg' out.svg || { echo "output is not SVG" >&2; exit 1; }
+grep -q '</svg>' out.svg || { echo "SVG is truncated: no closing element" >&2; exit 1; }
+for label in alpha beta carries; do
+    grep -q "$label" out.svg \
+        || { echo "label [$label] did not reach the rendered diagram" >&2; exit 1; }
+done
+
+# A blank canvas is valid SVG. Anything real carries drawing primitives.
+grep -qE '<(path|rect|ellipse|polygon|line)' out.svg \
+    || { echo "SVG contains no shapes; the layout pass produced an empty canvas" >&2; exit 1; }
+
+want="$(dpkg-query -W -f='${Version}' d2 | sed 's/-[^-]*$//')"
+got="$(d2 --version 2>&1)"
+printf '%s\n' "$got"
+case "$got" in
+    *"$want"*) ;;
+    *) echo "d2 --version [$got] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+echo "compiled a diagram to SVG with shapes and labels, version $want"

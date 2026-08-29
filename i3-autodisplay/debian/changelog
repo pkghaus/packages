@@ -1,0 +1,43 @@
+i3-autodisplay (0.6-3) unstable; urgency=medium
+
+  * Migrate to the pkghaus build pipeline
+  * x11-xserver-utils is a runtime dependency (xrandr), not a build one
+  * Build with the suite's Go against the vendored dependencies; the
+    dh-golang machinery is no longer needed
+  * Priority optional; extra is deprecated
+  * Build for any architecture
+
+ -- pkg.haus archive <archive@pkg.haus>  Sat, 15 Aug 2026 10:20:32 +0200
+
+i3-autodisplay (0.6-2) unstable; urgency=medium
+
+  * Bookworm is now stable
+
+ -- Martin Simon <me@martinsimon.me>  Thu, 18 Jan 2024 00:00:00 +0000
+
+i3-autodisplay (0.6-1) unstable; urgency=medium
+
+  * New upstream release
+  * Bullseye is now stable
+  * create Debian compat file
+  * Improve Debian version and package name handling in Github Action
+
+ -- Martin Simon <me@martinsimon.me>  Tue, 12 Oct 2021 00:00:00 +0000
+
+i3-autodisplay (0.5-1) unstable; urgency=medium
+
+  * Version 0.5
+
+ -- Martin Simon <me@martinsimon.me>  Sat, 27 Mar 2021 00:00:00 +0000
+
+i3-autodisplay (0.4-1) unstable; urgency=medium
+
+  * Version 0.4
+
+ -- Martin Simon <me@martinsimon.me>  Thu, 29 Oct 2020 00:00:00 +0000
+
+i3-autodisplay (0.3-1) unstable; urgency=medium
+
+  * Version 0.3
+
+ -- Martin Simon <me@martinsimon.me>  Tue, 15 Jul 2020 00:00:00 +0000

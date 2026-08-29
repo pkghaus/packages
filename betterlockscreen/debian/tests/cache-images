@@ -1,0 +1,98 @@
+#!/bin/bash
+#
+# betterlockscreen exists to pre-render a wallpaper into the variants it later
+# hands to i3lock, so that locking is instant. That rendering is the whole
+# product and it is the part that can be tested without a person at the
+# keyboard: -u takes an image, detects the displays, and writes a cache. The
+# lock itself needs a password to dismiss and is covered by i3lock-color's own
+# test, which asserts the full-screen window.
+#
+# Every path this exercises is a dependency that could be missing from the
+# package: xdpyinfo and xrandr for display detection, ImageMagick for the
+# transforms, bc for the arithmetic. A testbed installs only what the package
+# declares, so a stripped Depends line fails here rather than on a user's
+# machine at lock time.
+#
+# Note what debian/tests/control does NOT list: ImageMagick, although the
+# fixture below is built with magick. It has to arrive as betterlockscreen's
+# own dependency or not at all. Adding it to the test's Depends would make this
+# test install the very thing it is checking for, and a package that dropped
+# ImageMagick would then pass. Do not "fix" the missing entry.
+#
+# The screen is fixed at 1024x768 so the output dimensions can be compared
+# against a known value. That comparison is what proves display detection ran:
+# the source image is deliberately a different size (400x300), so a cache that
+# merely copied the input would not match.
+#
+# Only the variants that scale to the screen are dimension-checked. The
+# pixelated ones land on 1020x770 because pixelation scales down by a factor
+# and back up, and the rounding does not return to where it started.
+#
+# betterlockscreen's own version number is NOT asserted. Upstream's v4.4.0 tag
+# ships VERSION="4.3.0" in the script -- the constant is bumped by hand at
+# release and was missed -- so the number the binary reports is upstream's bug
+# to fix and cannot stand for the packaged version here. What --version is used
+# for instead is proof that the locker dependency resolved.
+
+set -euo pipefail
+
+if [ "${DEP8_UNDER_XVFB:-}" != 1 ]; then
+    export DEP8_UNDER_XVFB=1
+    exec xvfb-run -a --server-args="-screen 0 1024x768x24" "$0" "$@"
+fi
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+export HOME="$WORK"
+cd "$WORK"
+
+# --version reports the i3lock and ImageMagick it found. Both are Depends, and
+# a package that lost either would report a blank or fail here.
+banner="$(betterlockscreen --version 2>&1)"
+printf '%s\n' "$banner"
+case "$banner" in
+    *i3lock*) ;;
+    *) echo "betterlockscreen --version does not name an i3lock: [$banner]" >&2
+       exit 1 ;;
+esac
+case "$banner" in
+    *ImageMagick*) ;;
+    *) echo "betterlockscreen --version does not name an ImageMagick: [$banner]" >&2
+       exit 1 ;;
+esac
+
+magick -size 400x300 xc:steelblue "$WORK/wallpaper.png"
+
+if ! timeout 300 betterlockscreen -u "$WORK/wallpaper.png"; then
+    echo "betterlockscreen -u failed to build the cache" >&2
+    exit 1
+fi
+
+cache="$HOME/.cache/betterlockscreen/current"
+if [ ! -d "$cache" ]; then
+    echo "no cache directory at $cache" >&2
+    find "$HOME/.cache" -maxdepth 3 >&2 2>/dev/null || true
+    exit 1
+fi
+
+for variant in lock_blur lock_dim lock_dimblur lock_resize wall_resize; do
+    f="$cache/$variant.png"
+    if [ ! -s "$f" ]; then
+        echo "$variant.png is missing or empty" >&2
+        ls -la "$cache" >&2
+        exit 1
+    fi
+    got="$(magick identify -format '%wx%h %m' "$f" 2>/dev/null || true)"
+    if [ "$got" != "1024x768 PNG" ]; then
+        echo "$variant.png is [$got], expected a 1024x768 PNG matching the display" >&2
+        exit 1
+    fi
+done
+
+# The transforms must differ from one another. Identical bytes across blur and
+# dim would mean the pipeline ran but every effect was a no-op.
+if cmp -s "$cache/lock_blur.png" "$cache/lock_dim.png"; then
+    echo "lock_blur.png and lock_dim.png are byte-identical; the effects did not apply" >&2
+    exit 1
+fi
+
+echo "rendered $(ls "$cache" | wc -l) cache variants at 1024x768 from a 400x300 source"

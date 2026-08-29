@@ -1,0 +1,58 @@
+#!/bin/bash
+#
+# Load-test a server this test starts itself, and read the report back. The
+# target is local so the result does not depend on any remote host, and so the
+# expected outcome is exact: every request must succeed.
+#
+# python3 is a test dependency rather than a package one: vegeta needs
+# something to attack and the smallest thing in the archive that serves HTTP is
+# the standard library's module.
+#
+# Both directions. Against a live server the success ratio must be 100%; the
+# same attack against a closed port must not report success, or the test would
+# pass on a vegeta that fabricates its results.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+echo served > index.html
+
+python3 -m http.server 18099 --bind 127.0.0.1 >/dev/null 2>&1 &
+server=$!
+trap 'kill "$server" 2>/dev/null || true' EXIT
+
+for _ in $(seq 40); do
+    (exec 3<>/dev/tcp/127.0.0.1/18099) 2>/dev/null && { ready=1; break; }
+    sleep 0.25
+done
+[ "${ready:-0}" = 1 ] || { echo "the local server never listened" >&2; exit 1; }
+
+echo "GET http://127.0.0.1:18099/" | vegeta attack -rate=20 -duration=2s > results.bin
+[ -s results.bin ] || { echo "vegeta wrote no results" >&2; exit 1; }
+
+report="$(vegeta report results.bin 2>&1)"
+printf '%s\n' "$report"
+printf '%s' "$report" | grep -q '100.00%' \
+    || { echo "not every request against a live local server succeeded" >&2; exit 1; }
+printf '%s' "$report" | grep -q '200:' \
+    || { echo "no 200 responses recorded" >&2; exit 1; }
+
+# A closed port must not produce a successful report.
+echo "GET http://127.0.0.1:18098/" | vegeta attack -rate=5 -duration=1s > closed.bin 2>/dev/null || true
+closed="$(vegeta report closed.bin 2>&1 || true)"
+printf '%s\n' "$closed"
+# Assert the exact figure rather than "not 100%": a report that failed to
+# render at all would satisfy the weaker form, and this cannot.
+printf '%s' "$closed" | grep -q '0\.00%' \
+    || { echo "a closed port did not produce a 0.00% success ratio" >&2; exit 1; }
+
+want="$(dpkg-query -W -f='${Version}' vegeta | sed 's/-[^-]*$//')"
+got="$(vegeta -version 2>&1)"
+printf '%s\n' "$got"
+case "$got" in
+    *"$want"*) ;;
+    *) echo "vegeta -version [$got] does not name the packaged version [$want]" >&2; exit 1 ;;
+esac
+
+echo "attacked a local server at 100% success and failed against a closed port, version $want"

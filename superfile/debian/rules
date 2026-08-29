@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+
+# superfile's go.mod asks for a newer Go than the suite ships; let the Go
+# tool fetch that toolchain, the same trade the builder makes for Rust.
+export GOTOOLCHAIN := auto
+export GOFLAGS := -trimpath
+export GOCACHE := $(CURDIR)/.gocache
+export GOPATH := $(CURDIR)/.gopath
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	go build -buildmode=pie -o spf .
+
+# Upstream tests need network and external services; function is covered
+# by the packaging smoke test instead.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 spf debian/superfile/usr/bin/spf
+
+override_dh_auto_clean:
+	rm -rf $(CURDIR)/.gocache $(CURDIR)/.gopath spf
+
+# dwz has nothing useful to do on Go binaries.
+override_dh_dwz:

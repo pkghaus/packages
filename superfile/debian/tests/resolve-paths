@@ -1,0 +1,77 @@
+#!/bin/bash
+#
+# superfile is a full-screen file manager, but unlike most TUIs it ships
+# subcommands that answer without a terminal: path-list prints where it will
+# look for configuration, and --debug-info reports the build and what it found.
+# Both run with stdin closed, so this package needs no pty to be tested.
+#
+# The binary is spf, not superfile; a package that installed the wrong name
+# fails at the first line here.
+#
+# The paths are asserted under a custom XDG_CONFIG_HOME and XDG_DATA_HOME
+# rather than the defaults. Reading the default output back would be satisfied
+# by a binary that prints constants; redirecting the XDG roots and requiring
+# the output to follow proves the resolution logic actually runs. The log path
+# is checked against XDG_STATE_HOME separately because it follows a different
+# root, which is easy to get wrong when this is next touched.
+#
+# --fix-config-file would exercise more -- it writes a config and 22 theme
+# files -- but it exits 1 even when it succeeds, so it cannot carry an
+# assertion without pinning down an upstream quirk that may be fixed later.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+want="$(dpkg-query -W -f='${Version}' superfile | sed 's/-[^-]*$//')"
+reported="$(spf --version 2>&1 </dev/null)"
+printf '%s\n' "$reported"
+case "$reported" in
+    *"$want"*) ;;
+    *) echo "spf --version [$reported] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+export XDG_CONFIG_HOME="$WORK/xdg-config"
+export XDG_DATA_HOME="$WORK/xdg-data"
+export XDG_STATE_HOME="$WORK/xdg-state"
+
+paths="$(spf path-list 2>&1 </dev/null)"
+printf '%s\n' "$paths"
+
+for expected in \
+    "$XDG_CONFIG_HOME/superfile/config.toml" \
+    "$XDG_CONFIG_HOME/superfile/hotkeys.toml" \
+    "$XDG_DATA_HOME/superfile" \
+    "$XDG_STATE_HOME/superfile/superfile.log"
+do
+    case "$paths" in
+        *"$expected"*) ;;
+        *) echo "spf path-list does not resolve [$expected]" >&2
+           exit 1 ;;
+    esac
+done
+
+# A path still under the real home would mean the XDG variables were ignored
+# and the paths above matched something hardcoded.
+case "$paths" in
+    *"$WORK/xdg-"*) ;;
+    *) echo "spf path-list ignored the XDG roots entirely" >&2
+       exit 1 ;;
+esac
+
+debug="$(spf --debug-info 2>&1 </dev/null)"
+printf '%s\n' "$debug"
+case "$debug" in
+    *"$want"*) ;;
+    *) echo "spf --debug-info does not report the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+case "$debug" in
+    *"$XDG_CONFIG_HOME"*) ;;
+    *) echo "spf --debug-info does not report the resolved config location" >&2
+       exit 1 ;;
+esac
+
+echo "spf $want resolved its config, data and state paths under redirected XDG roots"

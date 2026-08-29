@@ -1,0 +1,87 @@
+name: Build
+
+# One workflow for every package. A tag builds the package it names; a pull
+# request builds only the packages whose directories it touches.
+
+on:
+  push:
+    tags:
+      # NOT '*'. In GitHub's filter patterns a single asterisk does not match a
+      # slash, so '*' silently never fires on croc/v11.3.4-1: no run, no error,
+      # nothing to notice the absence of.
+      - '*/v*'
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Decide what to build
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.plan.outputs.packages }}
+      has_work: ${{ steps.plan.outputs.has_work }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # A pull request needs the base to diff against; a tag needs nothing.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
+          persist-credentials: false
+
+      - name: Resolve the package set
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" = "push" ]; then
+              # refs/tags/croc/v11.3.4-1 -> croc
+              pkgs="${REF_NAME%%/*}"
+              [ -f "$pkgs/package.conf" ] || {
+                  echo "::error::tag $REF_NAME names no package directory" >&2; exit 1; }
+          else
+              # Only directories that are themselves packages, so a change to
+              # .github/ or README.md builds nothing rather than everything.
+              pkgs="$(git diff --name-only "$BASE_SHA"...HEAD \
+                      | cut -d/ -f1 | sort -u \
+                      | while read -r d; do [ -f "$d/package.conf" ] && echo "$d"; done)"
+          fi
+
+          # Enrolment gates publishing, not building: a staged package still
+          # gets its pull requests built, which is the point of staging it.
+          # Quoted: the variable already carries its own newlines on the pull
+          # request path and a single name on the tag path, so word splitting
+          # was never what made this work.
+          json="$(printf '%s\n' "$pkgs" | sed '/^$/d' | sort -u \
+                  | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')"
+          count="$(printf '%s' "$json" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+          has_work=false
+          [ "$count" -gt 0 ] && has_work=true
+
+          printf 'packages=%s\n' "$json" >> "$GITHUB_OUTPUT"
+          printf 'has_work=%s\n' "$has_work" >> "$GITHUB_OUTPUT"
+          printf 'building %s package(s): %s\n' "$count" "$json" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: ${{ matrix.package }}
+    needs: plan
+    if: needs.plan.outputs.has_work == 'true'
+    strategy:
+      # One package failing says nothing about the others.
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.plan.outputs.packages) }}
+    # An exact tag, not @v1, until this repository has proved the
+    # working_directory path in real builds. Moving v1 ships it to all 27
+    # single-package callers at once, and a bug here would reach them
+    # before it reached us.
+    uses: pkghaus/action-debian-build/.github/workflows/build.yml@v1.3.0
+    with:
+      working_directory: ${{ matrix.package }}
+    secrets: inherit

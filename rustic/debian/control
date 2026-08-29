@@ -1,0 +1,20 @@
+Source: rustic
+Section: admin
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://rustic.cli.rs
+
+Package: rustic
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: fast, encrypted, deduplicated backups
+ rustic backs up to restic-compatible repositories: content-defined
+ chunking, encryption, deduplication and snapshots, with cold-storage
+ support and lock-free operation. Local and remote (opendal) backends
+ are built in.

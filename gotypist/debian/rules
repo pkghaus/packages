@@ -1,0 +1,24 @@
+#!/usr/bin/make -f
+
+# Upstream vendors its Go dependencies, so the build is offline and needs
+# only the suite's compiler; no dh-golang machinery required.
+export GOFLAGS := -mod=vendor
+export GOCACHE := $(CURDIR)/.gocache
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	go build -o gotypist .
+
+override_dh_auto_test:
+	go test ./...
+
+override_dh_auto_install:
+	install -Dm0755 gotypist debian/gotypist/usr/bin/gotypist
+
+override_dh_auto_clean:
+	rm -rf $(CURDIR)/.gocache gotypist
+
+# dwz has nothing useful to do on Go binaries.
+override_dh_dwz:

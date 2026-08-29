@@ -1,0 +1,3 @@
+Tests: parse-config
+Depends: i3-autodisplay, xvfb, xauth
+Restrictions: allow-stderr

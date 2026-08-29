@@ -1,0 +1,5 @@
+# Not a Debian upload; there is no ITP bug to close.
+d2: initial-upload-closes-no-bugs
+# Upstream's mdoc man page trips a cosmetic groff nit (.Ev after a
+# macro); rendering is unaffected.
+d2: groff-message

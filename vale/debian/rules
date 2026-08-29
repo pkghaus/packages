@@ -1,0 +1,35 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+# vale's go.mod asks for a newer Go than the suite ships (1.25.7 against
+# trixie's 1.24), so the Go tool has to fetch one. Pinned to an exact version
+# rather than `auto`: `auto` builds with whatever go.mod happens to request on
+# the day, and the .buildinfo records only the Debian golang-go that was
+# installed, so nothing anywhere names the compiler that actually ran. This
+# line is that name, and it ships in the source package.
+export GOTOOLCHAIN := go1.25.7
+export GOFLAGS := -trimpath
+export GOCACHE := $(CURDIR)/.gocache
+export GOPATH := $(CURDIR)/.gopath
+
+%:
+	dh $@
+
+# Upstream stamps main.version via ldflags at release time; the source
+# default is "master", so an unstamped build reports that as its version.
+override_dh_auto_build:
+	go build -buildmode=pie -ldflags "-X main.version=$(DEB_VERSION_UPSTREAM)" -o vale ./cmd/vale
+
+# Upstream tests need network and external services; function is covered
+# by the packaging smoke test instead.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 vale debian/vale/usr/bin/vale
+
+override_dh_auto_clean:
+	rm -rf $(CURDIR)/.gocache $(CURDIR)/.gopath vale
+
+# dwz has nothing useful to do on Go binaries.
+override_dh_dwz:

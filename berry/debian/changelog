@@ -1,0 +1,70 @@
+berry (0.1.13-2) unstable; urgency=medium
+
+  * Migrate to the pkghaus build pipeline
+  * Priority optional; extra is deprecated
+  * Give the package a proper synopsis and description
+
+ -- pkg.haus archive <archive@pkg.haus>  Sat, 15 Aug 2026 10:15:02 +0200
+
+berry (0.1.13-1) unstable; urgency=medium
+
+  * New upstream release
+  * Bookworm is now stable
+
+ -- Martin Simon <martin@simon.tf>  Tue, 24 Jun 2025 00:00:00 +0000
+
+berry (0.1.12-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Tue, 25 Oct 2022 00:00:00 +0000
+
+berry (0.1.11-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Sat, 19 Mar 2022 00:00:00 +0000
+
+berry (0.1.10-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Fri, 04 Feb 2022 00:00:00 +0000
+
+berry (0.1.9-2) unstable; urgency=medium
+
+  * Bullseye is now stable
+  * Update debhelper
+  * Improve Debian version and package name handling in Github Action
+
+ -- Martin Simon <me@martinsimon.me>  Fri, 05 Nov 2021 00:00:00 +0000
+
+berry (0.1.9-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Mon, 14 Jun 2021 00:00:00 +0000
+
+berry (0.1.8-1) unstable; urgency=medium
+
+  * Version 0.1.8
+
+ -- Martin Simon <me@martinsimon.me>  Sun, 09 May 2021 00:00:00 +0000
+
+berry (0.1.7-1) unstable; urgency=medium
+
+  * Version 0.1.7
+
+ -- Martin Simon <me@martinsimon.me>  Mon, 02 Nov 2020 00:00:00 +0000
+
+berry (0.1.6-1) unstable; urgency=medium
+
+  * Version 0.1.6
+
+ -- Martin Simon <me@martinsimon.me>  Sun, 25 Oct 2020 00:00:00 +0000
+
+berry (0.1.5-1) unstable; urgency=medium
+
+  * Version 0.1.5
+
+ -- Martin Simon <me@martinsimon.me>  Sun, 26 Apr 2020 00:00:00 +0000

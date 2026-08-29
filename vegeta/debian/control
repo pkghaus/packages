@@ -1,0 +1,21 @@
+Source: vegeta
+Section: net
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ golang-go,
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://github.com/tsenart/vegeta
+
+Package: vegeta
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: HTTP load testing tool with constant request rate
+ vegeta drives HTTP services at a constant request rate and reports
+ latency distributions, throughput and status codes, as text, JSON
+ or plots. It works as a composable CLI (attack, report, plot,
+ encode) and as a library.

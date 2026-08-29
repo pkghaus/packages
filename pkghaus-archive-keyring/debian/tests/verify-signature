@@ -1,0 +1,110 @@
+#!/bin/bash
+#
+# The structural test next door proves the keyring holds the right key. This
+# one proves the key still does its job: verifying a real signature the archive
+# actually produced.
+#
+# The fixture is a genuine InRelease taken from https://apt.pkg.haus, committed
+# so the test stays offline. Signatures do not expire, so it keeps verifying
+# indefinitely -- with one exception noted at the bottom.
+#
+# Both verifiers are exercised because they are not interchangeable here.
+# trixie's apt depends on sqv, not gpgv: apt 3.0 moved signature checking to
+# Sequoia, so sqv is what actually runs when a user updates. gpgv is the
+# traditional tool, still used by debootstrap and by anyone scripting against
+# the keyring, and it reports the *subkey* that signed where sqv reports the
+# primary certificate. Asserting the subkey is what confirms the key CI signs
+# with is the one this keyring vouches for.
+#
+# The negative case matters as much as the positive. sqv writes its output file
+# even when verification fails, so "an output file exists" proves nothing --
+# the exit status is the assertion. A verifier that accepted a manipulated
+# message would pass the positive case and leave apt trusting anything.
+
+set -euo pipefail
+
+FIXTURES="$(dirname "$0")/fixtures"
+KEYRING=/usr/share/keyrings/pkghaus-archive-keyring.gpg
+SIGNING=DD34C42E776B591FBFEB72A162B67F3EA1FA6DEC
+PRIMARY=79C1BBCBE46FA8B9EBACC93020F923EB99EC1720
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+good="$FIXTURES/trixie-InRelease"
+if [ ! -s "$good" ]; then
+    echo "missing fixture $good" >&2
+    exit 1
+fi
+
+# gpgv: names the subkey that made the signature. Its exit status is captured
+# rather than left to errexit, so a keyring that cannot verify fails with a
+# reason instead of the script dying on gpgv's own exit code.
+set +e
+gpgv_out="$(gpgv --keyring "$KEYRING" "$good" 2>&1)"
+gpgv_rc=$?
+set -e
+printf '%s\n' "$gpgv_out"
+if [ "$gpgv_rc" -ne 0 ]; then
+    echo "gpgv rejected a real archive InRelease (exit $gpgv_rc)" >&2
+    exit 1
+fi
+case "$gpgv_out" in
+    *"Good signature"*) ;;
+    *) echo "gpgv did not report a good signature on a real archive InRelease" >&2
+       exit 1 ;;
+esac
+case "$gpgv_out" in
+    *"$SIGNING"*) ;;
+    *) echo "the signature was not made by the archive signing subkey $SIGNING" >&2
+       exit 1 ;;
+esac
+
+# sqv: the verifier trixie's apt actually invokes. --message for the Cleartext
+# Signature Framework, and --output has to name a path that does not exist.
+if ! sqv_out="$(sqv --keyring "$KEYRING" --message --output "$WORK/authenticated" "$good" 2>&1)"; then
+    echo "sqv rejected a real archive InRelease" >&2
+    printf '%s\n' "$sqv_out" >&2
+    exit 1
+fi
+printf '%s\n' "$sqv_out"
+case "$sqv_out" in
+    *"$PRIMARY"*) ;;
+    *) echo "sqv attributed the signature to [$sqv_out], not the archive primary $PRIMARY" >&2
+       exit 1 ;;
+esac
+
+# What sqv authenticated must be the Release body, not an empty file.
+if ! grep -q '^Origin: pkg.haus' "$WORK/authenticated"; then
+    echo "the authenticated output is not a pkg.haus Release body" >&2
+    head -5 "$WORK/authenticated" >&2
+    exit 1
+fi
+
+# A manipulated message must be refused by both. Editing a field inside the
+# signed body is the realistic attack: swapping in a different package index.
+sed 's/^Origin: pkg.haus/Origin: evil.example/' "$good" > "$WORK/tampered"
+if cmp -s "$good" "$WORK/tampered"; then
+    echo "the tampered fixture is identical to the original; the edit did not apply" >&2
+    exit 1
+fi
+
+if gpgv --keyring "$KEYRING" "$WORK/tampered" >/dev/null 2>&1; then
+    echo "gpgv accepted a manipulated InRelease" >&2
+    exit 1
+fi
+
+# Note the exit status, not the output file: sqv writes one either way.
+if sqv --keyring "$KEYRING" --message --output "$WORK/tampered-out" "$WORK/tampered" >/dev/null 2>&1; then
+    echo "sqv accepted a manipulated InRelease" >&2
+    exit 1
+fi
+
+echo "keyring verified a real archive InRelease with gpgv (subkey $SIGNING) and sqv (cert $PRIMARY), and both refused a manipulated copy"
+
+# If this test ever fails after a key rotation while the structural test still
+# passes, the fixture is the stale part, not the keyring: the new keyring no
+# longer carries the key that signed it. Refresh it with
+#   curl -sS https://apt.pkg.haus/dists/trixie/InRelease \
+#     -o debian/tests/fixtures/trixie-InRelease
+# This is listed as a rotation step in the signing runbook.

@@ -1,0 +1,66 @@
+#!/bin/bash
+#
+# Lint real prose with the built-in Vale style. Upstream's own suite is skipped
+# at build time because it reaches for network services, so function was
+# covered only by a procedure a human had to read and perform. This is that
+# procedure as code.
+#
+# The built-in `Vale` style ships inside the binary and needs no StylesPath
+# content and no network, which is what makes it usable here. Vale.Repetition
+# is pure pattern matching, unlike Vale.Spelling, which would drag in a
+# dictionary and make the test about that instead.
+#
+# Both directions are asserted. A vale that exits non-zero on everything would
+# pass a test that only checked the bad file, and a vale that silently lints
+# nothing would pass a test that only checked the good one.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+cat > .vale.ini <<'INI'
+StylesPath = styles
+MinAlertLevel = suggestion
+
+[*.md]
+BasedOnStyles = Vale
+INI
+mkdir -p styles
+
+printf 'This sentence has has a repeated word.\n' > bad.md
+printf 'This sentence is fine.\n' > good.md
+
+# The offending file: vale must find the repetition and exit non-zero.
+rc=0
+out="$(vale bad.md 2>&1)" || rc=$?
+printf '%s\n' "$out"
+[ "$rc" -ne 0 ] || { echo "vale exited 0 on prose it should have flagged" >&2; exit 1; }
+printf '%s' "$out" | grep -q 'Vale.Repetition' \
+    || { echo "no Vale.Repetition alert; the built-in style did not load" >&2; exit 1; }
+
+# The clean file: vale must find nothing and exit zero. Catches a build whose
+# rules match everything, and one that lints nothing at all.
+rc=0
+out="$(vale good.md 2>&1)" || rc=$?
+printf '%s\n' "$out"
+[ "$rc" -eq 0 ] || { echo "vale exited $rc on prose with no violations" >&2; exit 1; }
+
+# The binary must also know what it is. Upstream stamps main.version through
+# ldflags at release time and the source default is "master", so an unstamped
+# build reports that instead: exactly the defect 3.18.0-1 was cut to fix. A
+# lint test never touches --version, so without this the same regression could
+# ship again under a green gate.
+#
+# The expected value comes from dpkg rather than a literal, so this does not
+# need editing at every release.
+want="$(dpkg-query -W -f='${Version}' vale | sed 's/-[^-]*$//')"
+got="$(vale --version 2>&1)"
+printf '%s\n' "$got"
+case "$got" in
+    *"$want"*) ;;
+    *) echo "vale --version [$got] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+echo "linted both directions and reported version $want"

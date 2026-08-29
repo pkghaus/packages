@@ -1,0 +1,3 @@
+Tests: capture-command
+Depends: viddy, sqlite3, procps
+Restrictions: allow-stderr

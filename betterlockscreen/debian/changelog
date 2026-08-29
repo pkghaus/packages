@@ -1,0 +1,7 @@
+betterlockscreen (4.4.0-1) unstable; urgency=medium
+
+  * Initial release for the pkg.haus archive
+  * Point the systemd unit at /usr/bin, where this package installs the
+    script; upstream's unit hardcodes /usr/local/bin
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 21 Aug 2026 11:18:45 +0200

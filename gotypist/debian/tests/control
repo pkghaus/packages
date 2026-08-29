@@ -1,0 +1,3 @@
+Tests: render-lesson
+Depends: gotypist
+Restrictions: allow-stderr

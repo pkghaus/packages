@@ -1,0 +1,3 @@
+Tests: inline-assets
+Depends: monolith, coreutils
+Restrictions: allow-stderr

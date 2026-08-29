@@ -1,0 +1,32 @@
+Source: betterlockscreen
+Section: x11
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://github.com/betterlockscreen/betterlockscreen
+
+Package: betterlockscreen
+Architecture: all
+Depends:
+ bc,
+ fontconfig,
+ i3lock-color,
+ imagemagick,
+ procps,
+ x11-utils,
+ x11-xserver-utils,
+ ${misc:Depends},
+Recommends:
+ feh,
+Suggests:
+ dunst,
+Description: lock screen wrapper around i3lock-color
+ betterlockscreen pre-renders your wallpaper into blurred, dimmed and
+ pixelated variants, caches them per resolution, and locks the screen with
+ i3lock-color using the cached image. Locking is therefore instant rather
+ than waiting on image processing. A clock, a text greeter and per-state
+ ring colours are configurable, and a template systemd unit is included for
+ locking on suspend.

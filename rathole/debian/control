@@ -1,0 +1,22 @@
+Source: rathole
+Section: net
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ libssl-dev,
+ pkgconf,
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://github.com/rapiz1/rathole
+
+Package: rathole
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: lightweight and stable reverse tunnel for NAT traversal
+ rathole exposes services running behind NAT or firewalls through a
+ server with a public IP, with one binary acting as client or server.
+ Transports include TCP, TLS, Noise and WebSocket; configuration is
+ a small TOML file (examples included).

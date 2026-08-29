@@ -1,0 +1,23 @@
+Source: lychee
+Section: web
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ cmake,
+ pkgconf,
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://lychee.cli.rs
+
+Package: lychee
+Architecture: any
+Depends:
+ ca-certificates,
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: fast link checker for Markdown, HTML and websites
+ lychee checks links in Markdown, HTML, reStructuredText and plain
+ text, concurrently and with caching, and reports broken ones with
+ status codes. Built for CI use: globs, excludes, retries and a
+ configurable failure threshold.

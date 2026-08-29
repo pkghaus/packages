@@ -1,0 +1,22 @@
+Source: croc
+Section: net
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ golang-go,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://github.com/schollz/croc
+
+Package: croc
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: securely send files and folders between computers
+ croc transfers files and folders between any two machines through a
+ relay, end-to-end encrypted via a password-authenticated key exchange:
+ both ends only need the generated code phrase. Interrupted transfers
+ resume. A public relay brokers connections by default; croc relay runs
+ a self-hosted one (an example systemd unit ships with the package).

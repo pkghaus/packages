@@ -1,0 +1,16 @@
+lychee (0.24.2-1) unstable; urgency=medium
+
+  * New upstream release, from 0.15.1: upstream moved to workspace-prefixed
+    release tags (lychee-v*), so package.conf now tracks that scheme
+  * Build-Depends: cmake for aws-lc-sys; drop libssl-dev, upstream moved
+    from OpenSSL to rustls and openssl-sys is no longer in the lock file
+  * Depends: ca-certificates. rustls loads the trust store at client
+    construction and aborts when it is empty, so on a system without it
+    lychee fails before doing any work, --offline included
+
+ -- pkg.haus archive <archive@pkg.haus>  Mon, 17 Aug 2026 10:14:59 +0200
+lychee (0.15.1-1) unstable; urgency=medium
+
+  * Initial release for the pkg.haus archive
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 16 Aug 2026 06:21:16 +0200

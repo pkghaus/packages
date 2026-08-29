@@ -1,0 +1,23 @@
+Source: zola
+Section: web
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ cargo:native,
+ debhelper (>= 12),
+ rustc:native,
+Standards-Version: 4.6.0
+Homepage: https://github.com/getzola/zola
+
+Package: zola
+Architecture: any
+Depends:
+ ca-certificates,
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: fast static site generator in a single binary
+ Zola is a static site generator (SSG), similar to Hugo, Pelican, and Jekyll
+ (for a comprehensive list of SSGs, please see Jamstack). It is written in
+ Rust and uses the Tera template engine, which is similar to Jinja2, Django
+ templates, Liquid, and Twig. Content is written in CommonMark, a strongly
+ defined, highly compatible specification of Markdown.

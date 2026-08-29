@@ -1,0 +1,34 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+# croc's go.mod asks for a newer Go than the suite ships; let the Go tool
+# fetch that toolchain, the same trade the builder makes for Rust.
+export GOTOOLCHAIN := auto
+export GOFLAGS := -trimpath
+export GOCACHE := $(CURDIR)/.gocache
+export GOPATH := $(CURDIR)/.gopath
+
+%:
+	dh $@
+
+# Upstream's release workflow stamps the version constant from the release
+# tag before building, so the constant committed at a tag is one release
+# behind: v11.2.4 carries "11.2.3". Stamp it the same way, from the
+# changelog, or the binary reports a version nobody else's croc reports.
+override_dh_auto_build:
+	VERSION=$(DEB_VERSION_UPSTREAM) go run ./src/install/updateversion.go
+	go build -buildmode=pie -o croc .
+
+# Upstream's tests exercise real transfers over relays; function is
+# covered by the packaging smoke test (a real local transfer) instead.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 croc debian/croc/usr/bin/croc
+
+override_dh_auto_clean:
+	rm -rf $(CURDIR)/.gocache $(CURDIR)/.gopath croc
+
+# dwz has nothing useful to do on Go binaries.
+override_dh_dwz:

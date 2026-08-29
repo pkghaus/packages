@@ -1,0 +1,54 @@
+#!/bin/bash
+#
+# Check links in a local file, offline. Upstream's suite needs the network and
+# is skipped at build time, so function was covered only by a procedure a human
+# had to read and perform.
+#
+# The point of running this at all is 0.24.2-1: rustls loads its trust store
+# when the client is constructed, so on a system without ca-certificates lychee
+# aborted before doing any work, --offline included. It built clean and linted
+# clean. Only running the binary found it, which is exactly what this does, and
+# a DEP-8 testbed installs nothing but the declared Depends, so a dependency
+# that goes missing again fails here.
+#
+# --offline keeps the test deterministic: it resolves file paths and never
+# leaves the machine, so the result does not depend on some remote host being
+# up.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+printf 'target\n' > target.md
+printf '[good](./target.md)\n' > good.md
+printf '[bad](./no-such-file.md)\n' > bad.md
+
+# A document whose links resolve: lychee must succeed.
+rc=0
+out="$(lychee --offline --no-progress good.md 2>&1)" || rc=$?
+printf '%s\n' "$out"
+[ "$rc" -eq 0 ] || { echo "lychee exited $rc on a document whose links resolve" >&2; exit 1; }
+
+# A document with a broken link: lychee must fail and say which. Both
+# directions, because a binary that failed everything would pass a test that
+# only looked at the bad file, and one that checked nothing would pass a test
+# that only looked at the good one.
+rc=0
+out="$(lychee --offline --no-progress bad.md 2>&1)" || rc=$?
+printf '%s\n' "$out"
+[ "$rc" -ne 0 ] || { echo "lychee exited 0 on a document with a broken link" >&2; exit 1; }
+printf '%s' "$out" | grep -q 'no-such-file' \
+    || { echo "lychee failed but never named the broken link" >&2; exit 1; }
+
+# The version the package claims to ship.
+want="$(dpkg-query -W -f='${Version}' lychee | sed 's/-[^-]*$//')"
+got="$(lychee --version 2>&1)"
+printf '%s\n' "$got"
+case "$got" in
+    *"$want"*) ;;
+    *) echo "lychee --version [$got] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+echo "checked links both directions offline, version $want"

@@ -1,0 +1,94 @@
+#!/bin/bash
+#
+# Move a real request through a real tunnel. rathole is one binary that is both
+# ends depending on its flag, and the thing worth gating is that the two halves
+# negotiate and then carry traffic. A binary that starts, logs a healthy
+# control channel and forwards nothing would pass any weaker check.
+#
+# Everything is local: a python3 http.server origin, the server half bound to
+# loopback, the client half connecting to it. Nothing leaves the machine.
+#
+# The token is shared between the two configs on purpose. A mismatch is how
+# rathole refuses a service, so setting it proves the authenticated path works
+# rather than some unauthenticated fallback.
+#
+# isolation-container because this binds ports and starts daemons.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+BODY="rathole-dep8-$$"
+printf '%s\n' "$BODY" > index.html
+
+pids=""
+cleanup() { for p in $pids; do kill "$p" 2>/dev/null || true; done; return 0; }
+trap cleanup EXIT
+
+wait_port() {
+    for _ in $(seq 60); do
+        (exec 3<>/dev/tcp/"$1"/"$2") 2>/dev/null && return 0
+        sleep 0.5
+    done
+    echo "$3 never listened on $2" >&2
+    return 1
+}
+
+python3 -m http.server 18080 --bind 127.0.0.1 >/dev/null 2>&1 &
+pids="$pids $!"
+wait_port 127.0.0.1 18080 "the origin server"
+
+cat > server.toml <<'TOML'
+[server]
+bind_addr = "127.0.0.1:2333"
+
+[server.services.web]
+token = "dep8-shared-secret"
+bind_addr = "127.0.0.1:17081"
+TOML
+cat > client.toml <<'TOML'
+[client]
+remote_addr = "127.0.0.1:2333"
+
+[client.services.web]
+token = "dep8-shared-secret"
+local_addr = "127.0.0.1:18080"
+TOML
+
+rathole --server server.toml > server.log 2>&1 &
+pids="$pids $!"
+wait_port 127.0.0.1 2333 "the rathole server"
+
+rathole --client client.toml > client.log 2>&1 &
+pids="$pids $!"
+wait_port 127.0.0.1 17081 "the published service port"
+
+got="$(python3 - <<'PY'
+import urllib.request, sys
+try:
+    sys.stdout.write(urllib.request.urlopen(
+        "http://127.0.0.1:17081/index.html", timeout=20).read().decode().strip())
+except Exception as exc:
+    sys.stdout.write("FAILED: %s" % exc)
+PY
+)"
+printf 'through the tunnel: %s\n' "$got"
+[ "$got" = "$BODY" ] || {
+    echo "the tunnel did not deliver the origin's body" >&2
+    tail -20 server.log client.log >&2
+    exit 1
+}
+
+# The version string carries a build suffix on this package, so this is a
+# substring check and not an equality one.
+want="$(dpkg-query -W -f='${Version}' rathole | sed 's/-[^-]*$//')"
+got_v="$(rathole --help 2>&1 | head -1)"
+printf '%s\n' "$got_v"
+case "$got_v" in
+    *"$want"*) ;;
+    *) echo "rathole reports [$got_v], which does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+echo "carried a request end to end through an authenticated rathole tunnel"

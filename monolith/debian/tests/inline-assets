@@ -1,0 +1,59 @@
+#!/bin/bash
+#
+# Inline a local page's assets and check they really are inlined. The whole
+# point of monolith is that the output has no external references left, so
+# asserting a file was written would miss the only thing that matters.
+#
+# Both assets become base64 data URIs, including the stylesheet: an earlier
+# version of this test looked for the CSS text in the output and failed,
+# because monolith encodes it rather than pasting it. Written from observed
+# output now, and the stylesheet URI is decoded and compared instead of pattern
+# matched, which also proves the encoding is correct rather than merely
+# present.
+#
+# A local file: URL keeps this deterministic and off the network, and is the
+# harder case for the asset resolver.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+printf '\211PNG\r\n\032\n' > pic.png
+printf 'body { color: rebeccapurple; }\n' > style.css
+cat > page.html <<'HTML'
+<html><head><link rel="stylesheet" href="style.css"></head>
+<body><img src="pic.png"><p>hello</p></body></html>
+HTML
+
+monolith page.html -o out.html 2>&1 || { echo "monolith failed on a local page" >&2; exit 1; }
+[ -s out.html ] || { echo "monolith produced no output" >&2; exit 1; }
+cat out.html; echo
+
+grep -q 'data:image/png;base64,' out.html \
+    || { echo "the image was not inlined as a data URI" >&2; exit 1; }
+
+css="$(grep -o 'data:text/css;base64,[A-Za-z0-9+/=]*' out.html | head -1 | sed 's/^data:text\/css;base64,//')"
+[ -n "$css" ] || { echo "the stylesheet was not inlined as a data URI" >&2; exit 1; }
+decoded="$(printf '%s' "$css" | base64 -d)"
+printf 'decoded stylesheet: %s\n' "$decoded"
+printf '%s' "$decoded" | grep -q 'rebeccapurple' \
+    || { echo "the inlined stylesheet does not decode to the original CSS" >&2; exit 1; }
+
+grep -q 'hello' out.html || { echo "the page text did not survive" >&2; exit 1; }
+
+# Nothing may still point at the files on disk.
+if grep -qE 'src="pic\.png"|href="style\.css"' out.html; then
+    echo "output still references external files" >&2
+    exit 1
+fi
+
+want="$(dpkg-query -W -f='${Version}' monolith | sed 's/-[^-]*$//')"
+got="$(monolith --version 2>&1)"
+printf '%s\n' "$got"
+case "$got" in
+    *"$want"*) ;;
+    *) echo "monolith --version [$got] does not name the packaged version [$want]" >&2; exit 1 ;;
+esac
+
+echo "inlined image and stylesheet, decoded the CSS back, no external references, version $want"

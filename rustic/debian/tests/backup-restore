@@ -1,0 +1,53 @@
+#!/bin/bash
+#
+# Initialise a repository, back up, restore, and compare the bytes. A backup
+# tool that writes an archive it cannot read back is the failure this exists to
+# catch, and only a round-trip finds it.
+#
+# sha256 rather than a size or existence check: deduplication and encryption
+# both sit between the input and the output here, and either can produce a file
+# of the right length that is not the right file.
+#
+# `check` afterwards, because a repository can restore correctly while its own
+# integrity structures are wrong, and that is what a later backup would trip on.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+mkdir -p src repo out
+
+# Incompressible and non-trivial, so a backend that stores nothing cannot pass.
+head -c 1048576 /dev/urandom > src/payload.bin
+printf 'plain text too\n' > src/note.txt
+want="$(sha256sum src/payload.bin | cut -d' ' -f1)"
+echo "payload sha256 $want"
+
+export RUSTIC_PASSWORD=dep8-test
+
+rustic -r repo init 2>&1 | tail -1
+rustic -r repo backup src 2>&1 | tail -1
+rustic -r repo snapshots 2>&1 | tail -2
+
+rustic -r repo restore latest out 2>&1 | tail -1
+
+restored="$(find out -name payload.bin | head -1)"
+[ -n "$restored" ] || { echo "restore produced no payload.bin" >&2; ls -R out >&2; exit 1; }
+got="$(sha256sum "$restored" | cut -d' ' -f1)"
+[ "$got" = "$want" ] || { echo "restored payload differs: $got" >&2; exit 1; }
+
+note="$(find out -name note.txt -exec cat {} + | tr -d '\n')"
+[ "$note" = "plain text too" ] || { echo "restored note.txt is [$note]" >&2; exit 1; }
+
+rustic -r repo check 2>&1 | tail -1 \
+    || { echo "rustic check reported a problem with the repository" >&2; exit 1; }
+
+want_v="$(dpkg-query -W -f='${Version}' rustic | sed 's/-[^-]*$//')"
+got_v="$(rustic --version 2>&1)"
+printf '%s\n' "$got_v"
+case "$got_v" in
+    *"$want_v"*) ;;
+    *) echo "rustic --version [$got_v] does not name the packaged version [$want_v]" >&2; exit 1 ;;
+esac
+
+echo "backed up and restored 1 MiB byte-identical, version $want_v"

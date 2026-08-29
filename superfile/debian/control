@@ -1,0 +1,20 @@
+Source: superfile
+Section: utils
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ golang-go,
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://superfile.dev
+
+Package: superfile
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: modern terminal file manager
+ superfile (the spf binary) is a full-screen terminal file manager
+ with panels, tabs, file previews and built-in operations (copy,
+ compress, rename, delete with trash support), themed out of the box.

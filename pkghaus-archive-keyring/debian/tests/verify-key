@@ -1,0 +1,107 @@
+#!/bin/bash
+#
+# This package ships one file and makes one promise: that apt, pointed at
+# /usr/share/keyrings/pkghaus-archive-keyring.gpg, will find the archive's
+# signing key there. Everything below checks that promise against the file as
+# installed.
+#
+# debian/rules already asserts the primary fingerprint, but it does so against
+# the file it has just dearmored in the build tree. This test runs against what
+# dpkg unpacked, so it also covers the install path, the file surviving
+# packaging intact, and the dearmored form still being a keyring gpg will read.
+# The subkey is checked here and nowhere in the build.
+#
+# Both fingerprints are written out in full rather than derived. A test that
+# read the expected value from the same file it is checking would assert
+# nothing; these are the constants from the signing ceremony and changing one
+# has to be a deliberate edit here, matching the rotation runbook.
+#
+# Capabilities are asserted separately from identity because they are what make
+# the keyring usable: the primary certifies and must not sign, the subkey signs
+# the release files. A key with the right fingerprint and no signing subkey
+# would leave apt rejecting every index.
+
+set -euo pipefail
+
+# gpg creates a homedir on first use. Point it at the throwaway directory so
+# reading a keyring leaves nothing behind in the testbed's HOME.
+export GNUPGHOME="${AUTOPKGTEST_TMP:-$(mktemp -d)}/gnupg"
+mkdir -p "$GNUPGHOME"
+chmod 700 "$GNUPGHOME"
+
+KEYRING=/usr/share/keyrings/pkghaus-archive-keyring.gpg
+PRIMARY=79C1BBCBE46FA8B9EBACC93020F923EB99EC1720
+SIGNING=DD34C42E776B591FBFEB72A162B67F3EA1FA6DEC
+
+if [ ! -s "$KEYRING" ]; then
+    echo "no keyring at $KEYRING" >&2
+    dpkg -L pkghaus-archive-keyring >&2
+    exit 1
+fi
+
+# A dearmored keyring is binary. An armored one would still parse below but
+# apt's signed-by would not accept it, so the format is worth pinning.
+if head -c 100 "$KEYRING" | grep -q 'BEGIN PGP PUBLIC KEY BLOCK'; then
+    echo "$KEYRING is ASCII-armored; apt needs the dearmored form" >&2
+    exit 1
+fi
+
+if ! colons="$(gpg --batch --show-keys --with-colons "$KEYRING" 2>&1)"; then
+    echo "gpg could not read $KEYRING as a keyring" >&2
+    printf '%s\n' "$colons" >&2
+    exit 1
+fi
+printf '%s\n' "$colons"
+
+for fpr in "$PRIMARY" "$SIGNING"; do
+    if ! printf '%s\n' "$colons" | grep -q "^fpr:::::::::$fpr:"; then
+        echo "the keyring does not carry $fpr" >&2
+        exit 1
+    fi
+done
+
+# Capability letters are lowercase for what this key itself may do. The primary
+# certifies; the subkey signs.
+primary_caps="$(printf '%s\n' "$colons" | awk -F: '/^pub:/ { print $12; exit }')"
+case "$primary_caps" in
+    *c*) ;;
+    *) echo "the primary key cannot certify (capabilities [$primary_caps])" >&2
+       exit 1 ;;
+esac
+
+signing_caps="$(printf '%s\n' "$colons" | awk -F: '/^sub:/ { print $12; exit }')"
+case "$signing_caps" in
+    *s*) ;;
+    *) echo "the subkey cannot sign (capabilities [$signing_caps])" >&2
+       exit 1 ;;
+esac
+
+uid="$(printf '%s\n' "$colons" | awk -F: '/^uid:/ { print $10; exit }')"
+case "$uid" in
+    *"archive@pkg.haus"*) ;;
+    *) echo "the keyring's user id is [$uid], not the archive role address" >&2
+       exit 1 ;;
+esac
+
+# An expired key is a broken package: apt rejects every index signed by it. The
+# scheduled watcher warns ahead of time against the published keyring; this
+# catches the case where an already-expired key was packaged in the first place.
+#
+# The check is one awk over the whole keyring rather than a shell loop. A loop
+# reading from a pipe runs in a subshell, where an exit ends the subshell and
+# not the test -- the assertion has to live where its status is the script's.
+now="$(date +%s)"
+if printf '%s\n' "$colons" | awk -F: -v now="$now" \
+     '/^(pub|sub):/ && $7 != "" && $7 <= now { bad = 1 } END { exit !bad }'; then
+    echo "the keyring contains a key that has already expired" >&2
+    printf '%s\n' "$colons" | awk -F: -v now="$now" \
+        '/^(pub|sub):/ && $7 != "" && $7 <= now { print "  expired: " $1 " " $5 " at " $7 }' >&2
+    exit 1
+fi
+
+printf '%s\n' "$colons" | awk -F: '/^(pub|sub):/ && $7 != "" { print $1, $5, $7 }' \
+    | while read -r kind keyid expires; do
+        echo "  $kind $keyid valid until $(date -u -d "@$expires" '+%Y-%m-%d')"
+      done
+
+echo "keyring installed at $KEYRING carries $PRIMARY (certify) and $SIGNING (sign), unexpired"

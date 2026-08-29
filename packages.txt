@@ -1,0 +1,36 @@
+# One directory per line. The ingest builds each enrolled package's newest tag
+# for every suite and architecture the archive serves. Comments and blank lines
+# are ignored.
+#
+# Enrolment is deliberate and separate from the tree: a directory that is not
+# listed here is in the repository but not published, which is how a package is
+# staged while its packaging is reviewed. CI enforces the other direction, that
+# every line here has a matching directory.
+#
+# Removing a line stops future builds. It does NOT remove the package from the
+# archive: that is a separate, deliberate act (pkghaus/apt, retire workflow).
+act
+actionlint
+berry
+betterlockscreen
+croc
+d2
+difftastic
+frp
+fx
+gotypist
+i3-autodisplay
+i3lock-color
+lychee
+mandown
+monolith
+ouch
+pkghaus-archive-keyring
+rathole
+rustic
+superfile
+typst
+vale
+vegeta
+viddy
+zola

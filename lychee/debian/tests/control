@@ -1,0 +1,3 @@
+Tests: check-links
+Depends: lychee
+Restrictions: allow-stderr

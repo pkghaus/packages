@@ -1,0 +1,89 @@
+#!/bin/bash
+#
+# Move a real request through a real tunnel. This package ships frpc and frps
+# and its whole purpose is that the pair talk to each other, so anything short
+# of an end-to-end transfer proves very little: both binaries can start,
+# report a healthy version, and still fail to carry a byte.
+#
+# Everything is local. The origin is a python3 http.server, frps binds a
+# control port and a remote port on loopback, and frpc connects out to it and
+# forwards. Nothing leaves the machine, so the result does not depend on any
+# public frp server being up.
+#
+# isolation-container because this binds ports and starts daemons.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+BODY="frp-dep8-$$"
+printf '%s\n' "$BODY" > index.html
+
+pids=""
+cleanup() { for p in $pids; do kill "$p" 2>/dev/null || true; done; return 0; }
+trap cleanup EXIT
+
+wait_port() { # host port label
+    for _ in $(seq 60); do
+        (exec 3<>/dev/tcp/"$1"/"$2") 2>/dev/null && return 0
+        sleep 0.5
+    done
+    echo "$3 never listened on $2" >&2
+    return 1
+}
+
+python3 -m http.server 18080 --bind 127.0.0.1 >/dev/null 2>&1 &
+pids="$pids $!"
+wait_port 127.0.0.1 18080 "the origin server"
+
+cat > frps.toml <<'TOML'
+bindPort = 17000
+TOML
+cat > frpc.toml <<'TOML'
+serverAddr = "127.0.0.1"
+serverPort = 17000
+[[proxies]]
+name = "web"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 18080
+remotePort = 17080
+TOML
+
+frps -c frps.toml > frps.log 2>&1 &
+pids="$pids $!"
+wait_port 127.0.0.1 17000 "frps"
+
+frpc -c frpc.toml > frpc.log 2>&1 &
+pids="$pids $!"
+wait_port 127.0.0.1 17080 "the frpc-published remote port"
+
+got="$(python3 - <<'PY'
+import urllib.request, sys
+try:
+    sys.stdout.write(urllib.request.urlopen(
+        "http://127.0.0.1:17080/index.html", timeout=20).read().decode().strip())
+except Exception as exc:
+    sys.stdout.write("FAILED: %s" % exc)
+PY
+)"
+printf 'through the tunnel: %s\n' "$got"
+[ "$got" = "$BODY" ] || {
+    echo "the tunnel did not deliver the origin's body" >&2
+    tail -20 frps.log frpc.log >&2
+    exit 1
+}
+
+for b in frpc frps; do
+    want="$(dpkg-query -W -f='${Version}' frp | sed 's/-[^-]*$//')"
+    got_v="$($b --version 2>&1)"
+    printf '%s: %s\n' "$b" "$got_v"
+    case "$got_v" in
+        *"$want"*) ;;
+        *) echo "$b --version [$got_v] does not name the packaged version [$want]" >&2
+           exit 1 ;;
+    esac
+done
+
+echo "carried a request end to end through frpc and frps"

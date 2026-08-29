@@ -1,0 +1,3 @@
+Tests: tunnel
+Depends: rathole, python3, coreutils
+Restrictions: allow-stderr, isolation-container

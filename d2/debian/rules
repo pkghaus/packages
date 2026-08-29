@@ -1,0 +1,39 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+# Suite Go satisfies d2's go.mod today; auto keeps future bumps building.
+export GOTOOLCHAIN := auto
+export GOFLAGS := -trimpath
+export GOCACHE := $(CURDIR)/.gocache
+export GOPATH := $(CURDIR)/.gopath
+
+%:
+	dh $@
+
+# lib/version.Version is a stale literal in the tagged tree (v0.8.2 carries
+# "v0.8.1-HEAD"), which upstream's release build overwrites through this same
+# ldflag. Unstamped, d2 advertises that literal as its version.
+#
+# The -X path must track the module path, which moved from oss.terrastruct.com/d2
+# to github.com/d2lang/d2 at v0.8.0. Go does not error on an -X naming a symbol
+# that does not exist, it silently does nothing, so a stale path here fails as a
+# wrong version rather than as a build failure. debian/tests asserts the
+# reported version for exactly that reason.
+override_dh_auto_build:
+	go build -buildmode=pie \
+		-ldflags "-X github.com/d2lang/d2/lib/version.Version=v$(DEB_VERSION_UPSTREAM)" \
+		-o d2 .
+
+# Upstream's full test suite is heavy; function is covered by the
+# packaging smoke test (compile a diagram to SVG) instead.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 d2 debian/d2/usr/bin/d2
+
+override_dh_auto_clean:
+	rm -rf $(CURDIR)/.gocache $(CURDIR)/.gopath d2
+
+# dwz has nothing useful to do on Go binaries.
+override_dh_dwz:

@@ -1,0 +1,3 @@
+Tests: lint-workflow
+Depends: actionlint
+Restrictions: allow-stderr

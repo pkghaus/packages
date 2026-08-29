@@ -1,0 +1,94 @@
+#!/bin/bash
+#
+# i3-autodisplay is a daemon: given a config it connects to X, watches for
+# RandR screen-change events, and reconfigures i3 workspaces when monitors come
+# and go. None of that terminates, and the interesting half needs a running i3
+# and monitors to hotplug, neither of which a testbed has.
+#
+# So this test deliberately covers less than the others in the fleet. It
+# asserts the three things that are checkable without i3 and without hardware:
+# the binary runs and describes its interface, its config parser accepts a
+# valid file and rejects a broken one with a diagnostic, and given a display it
+# connects and keeps running rather than dying on startup.
+#
+# What it does NOT prove: that workspaces are actually moved between outputs.
+# That is the package's real function and it stays covered only by use. Read a
+# pass here as "the binary is not broken", not as "the feature works".
+#
+# The startup check is still worth having. A Go binary that cannot reach X
+# exits immediately, so "still running after several seconds with a display
+# present" separates a working X connection from a package that would fail the
+# moment a user started it from their i3 config.
+#
+# Both no-display invocations are bounded. This is a daemon: a build that hung
+# instead of parsing would otherwise run out the harness clock, and a timeout
+# reported by the harness says far less than a failure with a reason. A hang is
+# caught here as a missing diagnostic rather than as a wait.
+#
+# The test runs in two phases. The checks that need no display run first and
+# report parser faults unambiguously, because a YAML diagnostic cannot be
+# confused with a failure to reach X. Only the last phase is handed to
+# xvfb-run, which takes a single command; re-execing the whole script under it
+# instead would run the earlier phase a second time.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+if [ "${1:-}" = "--x-phase" ]; then
+    daemon_pid=""
+    cleanup() { [ -n "$daemon_pid" ] && kill "$daemon_pid" 2>/dev/null; return 0; }
+    trap cleanup EXIT
+
+    i3-autodisplay -config "$WORK/valid.yml" >"$WORK/daemon.log" 2>&1 &
+    daemon_pid=$!
+
+    # Long enough that a binary which dies on startup has died. It has nothing
+    # to report on a testbed with one static screen and no i3, so there is no
+    # output to wait for -- survival is the signal.
+    sleep 5
+
+    if ! kill -0 "$daemon_pid" 2>/dev/null; then
+        echo "i3-autodisplay exited within 5s of starting with a display present" >&2
+        cat "$WORK/daemon.log" >&2
+        exit 1
+    fi
+
+    echo "i3-autodisplay rejected a malformed config, accepted a valid one, and held an X connection"
+    exit 0
+fi
+
+# The interface. Go's flag package prints this and it is the cheapest proof
+# that the binary loads and its dynamic dependencies resolve.
+usage="$(timeout 30 i3-autodisplay -h 2>&1 || true)"
+printf '%s\n' "$usage"
+case "$usage" in
+    *"-config"*) ;;
+    *) echo "i3-autodisplay -h does not document -config: [$usage]" >&2
+       exit 1 ;;
+esac
+
+# A config the parser must reject.
+printf 'displays: [ this is not valid\n' > "$WORK/broken.yml"
+set +e
+broken_out="$(timeout 30 i3-autodisplay -config "$WORK/broken.yml" 2>&1)"
+broken_rc=$?
+set -e
+if [ "$broken_rc" -eq 0 ]; then
+    echo "a malformed config was accepted: [$broken_out]" >&2
+    exit 1
+fi
+case "$broken_out" in
+    *yaml*|*YAML*) ;;
+    *) echo "rejecting a malformed config gave no yaml diagnostic: [$broken_out]" >&2
+       exit 1 ;;
+esac
+
+cat > "$WORK/valid.yml" <<'YML'
+displays:
+  - name: screen
+    workspaces: [1,2,3]
+YML
+
+exec xvfb-run -a --server-args="-screen 0 1024x768x24" "$0" --x-phase

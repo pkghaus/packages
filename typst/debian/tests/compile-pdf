@@ -1,0 +1,54 @@
+#!/bin/bash
+#
+# Typeset a document and check the result is a real PDF. Upstream's suite needs
+# fixtures and a network, so function was covered only by a human compiling
+# something and looking at it.
+#
+# What is asserted goes past "a file appeared": the magic bytes, the trailer
+# every reader needs to find the object table, and a page object. A truncated
+# write or a font subsystem that failed after opening the file would leave
+# something non-empty and fail all three.
+#
+# --font-path points at nothing on purpose. Typst embeds its default faces, so
+# this stays deterministic on a testbed with no system fonts, and a build that
+# lost them fails here rather than silently falling back.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+mkdir -p empty-fonts
+
+printf '= Heading\n\nA paragraph with #emph[emphasis].\n' > in.typ
+
+typst compile --font-path empty-fonts in.typ out.pdf 2>&1 \
+    || { echo "typst failed to compile a two-line document" >&2; exit 1; }
+[ -s out.pdf ] || { echo "typst produced no output" >&2; exit 1; }
+
+printf 'size: %s bytes\n' "$(stat -c%s out.pdf)"
+head -c 8 out.pdf | od -c | head -1
+
+head -c 5 out.pdf | grep -q '%PDF-' \
+    || { echo "output does not start with the PDF magic" >&2; exit 1; }
+tail -c 64 out.pdf | grep -q '%%EOF' \
+    || { echo "PDF has no %%EOF trailer: the write was truncated" >&2; exit 1; }
+grep -qa '/Page' out.pdf \
+    || { echo "PDF contains no page object" >&2; exit 1; }
+
+# A document that cannot compile must fail, or the test above proves only that
+# typst writes files.
+printf '#panic("deliberate")\n' > bad.typ
+rc=0
+typst compile --font-path empty-fonts bad.typ bad.pdf >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 0 ] || { echo "typst exited 0 on a document that panics" >&2; exit 1; }
+
+want="$(dpkg-query -W -f='${Version}' typst | sed 's/-[^-]*$//')"
+got="$(typst --version 2>&1)"
+printf '%s\n' "$got"
+case "$got" in
+    *"$want"*) ;;
+    *) echo "typst --version [$got] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+echo "typeset a PDF with a page object and rejected a bad document, version $want"

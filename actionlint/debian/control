@@ -1,0 +1,20 @@
+Source: actionlint
+Section: devel
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ golang-go,
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://rhysd.github.io/actionlint/
+
+Package: actionlint
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: static checker for GitHub Actions workflow files
+ actionlint lints .github/workflows/ files: expression type checks,
+ action input validation, shellcheck integration for run: blocks,
+ runner label checks and many workflow-specific pitfalls.

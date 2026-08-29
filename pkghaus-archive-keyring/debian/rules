@@ -1,0 +1,18 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	gpg --dearmor < keys/pkg.haus-archive.asc > pkghaus-archive-keyring.gpg
+	# The keyring must carry the archive's primary key; fail the build if
+	# the key material ever drifts from the expected fingerprint.
+	gpg --batch --show-keys --with-colons pkghaus-archive-keyring.gpg \
+		| grep -q '^fpr:::::::::79C1BBCBE46FA8B9EBACC93020F923EB99EC1720:'
+
+override_dh_auto_install:
+	install -Dm0644 pkghaus-archive-keyring.gpg \
+		debian/pkghaus-archive-keyring/usr/share/keyrings/pkghaus-archive-keyring.gpg
+
+override_dh_auto_clean:
+	rm -f pkghaus-archive-keyring.gpg

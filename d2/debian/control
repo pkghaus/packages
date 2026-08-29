@@ -1,0 +1,20 @@
+Source: d2
+Section: graphics
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ golang-go,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://d2lang.com
+
+Package: d2
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: declarative diagramming language and compiler
+ D2 turns text into diagrams: a scripting language whose compiler renders
+ the description to SVG and other formats, with layout engines, themes
+ and a watch mode for live editing.

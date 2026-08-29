@@ -1,0 +1,22 @@
+Source: act
+Section: devel
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ golang-go,
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://github.com/nektos/act
+
+Package: act
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Recommends: docker.io
+Description: run GitHub Actions workflows locally
+ act reads the workflows under .github/workflows/ and runs their jobs in
+ containers on the local machine, so a workflow can be iterated on
+ without pushing commits. It needs a container engine at runtime; Docker
+ is the default, hence the recommendation.

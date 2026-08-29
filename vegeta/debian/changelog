@@ -1,0 +1,11 @@
+vegeta (12.13.0-2) unstable; urgency=medium
+
+  * Report a version and commit; an unstamped build left both fields empty
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 21 Aug 2026 08:33:40 +0200
+
+vegeta (12.13.0-1) unstable; urgency=medium
+
+  * Initial release for the pkg.haus archive
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 16 Aug 2026 06:21:16 +0200

@@ -1,0 +1,22 @@
+Source: mandown
+Section: text
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ libconfig-dev,
+ libncurses-dev,
+ libxml2-dev,
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://github.com/Titor8115/mandown
+
+Package: mandown
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: man-page inspired Markdown viewer
+ A man-page inspired Markdown pager written in C.
+ Need to lookup things from README? Or from manual page? Or perhaps just
+ want to install something cool...

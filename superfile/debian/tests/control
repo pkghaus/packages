@@ -1,0 +1,3 @@
+Tests: resolve-paths
+Depends: superfile
+Restrictions: allow-stderr

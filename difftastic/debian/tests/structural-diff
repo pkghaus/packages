@@ -1,0 +1,53 @@
+#!/bin/bash
+#
+# Diff two files that differ, and two that differ only in formatting. The
+# binary is difft, not difftastic, which is itself worth exercising: a package
+# installing the wrong name would pass every check that never ran it.
+#
+# The property under test is structural rather than textual. Reformatting
+# without changing meaning is the case difftastic exists for, and a line-based
+# diff would call it a change; this asserts difftastic does not. That
+# distinguishes a working parser from a build that has fallen back to comparing
+# bytes.
+#
+# --exit-code because difft returns 0 whether or not it found anything unless
+# asked. Written from observed behaviour rather than assumption: with the flag,
+# a real change exits 1 and a pure reformat exits 0. The printed text is
+# checked too, but the exit status is the load-bearing assertion.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+printf 'fn main() {\n    println!("a");\n}\n' > a.rs
+printf 'fn main() {\n    println!("b");\n}\n' > b.rs
+# Identical code, different whitespace and line breaks.
+printf 'fn main() { println!("a"); }\n' > a-reformatted.rs
+
+# A real change: exit 1, and the differing line shown.
+rc=0
+out="$(difft --color never --exit-code a.rs b.rs 2>&1)" || rc=$?
+printf '%s\n' "$out"
+[ "$rc" -eq 1 ] || { echo "difft exited $rc for a real change, expected 1" >&2; exit 1; }
+printf '%s' "$out" | grep -q 'println!("b")' \
+    || { echo "difft did not show the changed line" >&2; exit 1; }
+
+# Formatting only: a structural diff reports nothing, where a textual one would.
+rc=0
+out="$(difft --color never --exit-code a.rs a-reformatted.rs 2>&1)" || rc=$?
+printf '%s\n' "$out"
+[ "$rc" -eq 0 ] || { echo "difft exited $rc for a pure reformat; it is not parsing" >&2; exit 1; }
+printf '%s' "$out" | grep -q 'No syntactic changes' \
+    || { echo "difft did not report the reformat as syntactically identical" >&2; exit 1; }
+
+want="$(dpkg-query -W -f='${Version}' difftastic | sed 's/-[^-]*$//')"
+got="$(difft --version 2>&1)"
+printf '%s\n' "$got"
+case "$got" in
+    *"$want"*) ;;
+    *) echo "difft --version [$got] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+echo "diffed structurally in both directions, version $want"

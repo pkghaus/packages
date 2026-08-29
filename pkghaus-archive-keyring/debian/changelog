@@ -1,0 +1,7 @@
+pkghaus-archive-keyring (2026.08.15) unstable; urgency=medium
+
+  * Initial release: the 2026-08-13 ceremony keys (primary
+    79C1BBCBE46FA8B9EBACC93020F923EB99EC1720, signing subkey
+    DD34C42E776B591FBFEB72A162B67F3EA1FA6DEC)
+
+ -- pkg.haus archive <archive@pkg.haus>  Sat, 15 Aug 2026 18:36:19 +0200

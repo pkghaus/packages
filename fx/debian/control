@@ -1,0 +1,20 @@
+Source: fx
+Section: utils
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ golang-go,
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://fx.wtf
+
+Package: fx
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: terminal JSON viewer and processor
+ fx renders JSON as an interactive, collapsible tree in the terminal
+ and doubles as a non-interactive processor: expressions passed as
+ arguments transform the input stream, JavaScript-flavored.

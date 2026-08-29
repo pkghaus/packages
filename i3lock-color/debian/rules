@@ -1,0 +1,13 @@
+#!/usr/bin/make -f
+
+export V:=1
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@
+
+# Upstream's AX_ENABLE_BUILDDIR dispatcher (per-arch build subdirectory)
+# breaks under trixie's autotools ("No rule to make target
+# 'all-configured'"); build in-tree instead.
+override_dh_auto_configure:
+	dh_auto_configure -- --disable-builddir

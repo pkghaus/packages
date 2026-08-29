@@ -1,0 +1,3 @@
+Tests: render-markdown
+Depends: mandown, coreutils
+Restrictions: allow-stderr

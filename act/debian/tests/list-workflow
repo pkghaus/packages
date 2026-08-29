@@ -1,0 +1,96 @@
+#!/bin/bash
+#
+# act runs GitHub Actions workflows in containers, which a testbed cannot
+# provide: there is no Docker daemon inside an autopkgtest container and
+# arranging one would test Docker rather than this package.
+#
+# What can be tested without a daemon is the half of act that does the reading:
+# -l parses the workflow files, resolves job dependencies into stages, and
+# prints the plan. That exercises the YAML parser, the workflow model and the
+# planner, and it is the code path a broken build breaks first. act emits a
+# warning about the missing Docker connection and still exits 0, which is why
+# this test declares allow-stderr.
+#
+# The fixture has two jobs rather than one, with the second declaring "needs"
+# on the first. A single job would be listed correctly by any parser that
+# managed to read a file; the dependency is what forces act to compute stages,
+# and the assertion below checks that it put them in different ones.
+#
+# The empty-directory case is included because "prints nothing and exits 0" is
+# the failure this test would otherwise miss entirely: without it, an act that
+# silently found no workflows would pass the listing assertion by accident.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+want="$(dpkg-query -W -f='${Version}' act | sed 's/-[^-]*$//')"
+reported="$(act --version 2>&1)"
+printf '%s\n' "$reported"
+case "$reported" in
+    *"$want"*) ;;
+    *) echo "act --version [$reported] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+mkdir -p "$WORK/project/.github/workflows"
+cat > "$WORK/project/.github/workflows/pipeline.yml" <<'YML'
+name: dep8 pipeline
+on: [push]
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo compiling
+  publish:
+    needs: compile
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo publishing
+YML
+
+cd "$WORK/project"
+listing="$(act -l 2>&1)"
+printf '%s\n' "$listing"
+
+for job in compile publish; do
+    case "$listing" in
+        *"$job"*) ;;
+        *) echo "act -l did not list the $job job" >&2
+           exit 1 ;;
+    esac
+done
+
+case "$listing" in
+    *"dep8 pipeline"*) ;;
+    *) echo "act -l did not name the workflow" >&2
+       exit 1 ;;
+esac
+
+# "needs" must place the jobs in different stages. Reading the stage column
+# for each job is what proves the dependency was resolved rather than ignored.
+compile_stage="$(printf '%s\n' "$listing" | awk '$2 == "compile" { print $1; exit }')"
+publish_stage="$(printf '%s\n' "$listing" | awk '$2 == "publish" { print $1; exit }')"
+if [ -z "$compile_stage" ] || [ -z "$publish_stage" ]; then
+    echo "could not read stage numbers from the listing" >&2
+    exit 1
+fi
+if [ "$compile_stage" = "$publish_stage" ]; then
+    echo "compile and publish are both in stage $compile_stage; needs was not resolved" >&2
+    exit 1
+fi
+
+# A directory with no workflows must be an error, not an empty success.
+mkdir -p "$WORK/bare"
+cd "$WORK/bare"
+set +e
+bare_out="$(act -l 2>&1)"
+bare_rc=$?
+set -e
+if [ "$bare_rc" -eq 0 ]; then
+    echo "act -l exited 0 in a directory with no workflows: [$bare_out]" >&2
+    exit 1
+fi
+
+echo "act $want planned 2 jobs into stages $compile_stage and $publish_stage without a Docker daemon"

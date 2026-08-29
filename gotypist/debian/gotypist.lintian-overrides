@@ -1,0 +1,2 @@
+# Pure-Go binaries are statically linked by design.
+gotypist: statically-linked-binary

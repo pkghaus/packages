@@ -1,0 +1,3 @@
+Tests: tunnel
+Depends: frp, python3, coreutils
+Restrictions: allow-stderr, isolation-container

@@ -1,0 +1,50 @@
+#!/bin/bash
+#
+# Compress and decompress, and compare the bytes that come back. Upstream's
+# suite is skipped at build time, so nothing proved the format backends work.
+#
+# sha256 rather than "the file exists": an archiver that writes a truncated or
+# empty member produces a plausible-looking file, and a size check would pass
+# it. The comparison is what makes this a gate.
+#
+# Several formats on purpose. ouch links its backends separately, so one can be
+# missing while the others work, and a test that only exercised .tar.gz would
+# never notice. bzip3 in particular came in through a bindgen build-dependency
+# that could regress on its own.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+# Incompressible, so a backend that silently stores nothing cannot pass by
+# writing a well-compressed empty stream.
+head -c 1048576 /dev/urandom > payload.bin
+want="$(sha256sum payload.bin | cut -d' ' -f1)"
+echo "payload sha256 $want"
+
+for fmt in tar.gz tar.xz tar.bz2 zip; do
+    rm -rf out
+    ouch compress payload.bin "archive.$fmt" >/dev/null 2>&1 \
+        || { echo "ouch could not compress to $fmt" >&2; exit 1; }
+    [ -s "archive.$fmt" ] || { echo "$fmt archive is empty" >&2; exit 1; }
+
+    ouch decompress --dir out "archive.$fmt" >/dev/null 2>&1 \
+        || { echo "ouch could not decompress $fmt" >&2; exit 1; }
+
+    got="$(find out -name payload.bin -exec sha256sum {} + | cut -d' ' -f1)"
+    [ "$got" = "$want" ] \
+        || { echo "$fmt round-trip changed the bytes: $got" >&2; exit 1; }
+    printf '  %-8s round-trip ok\n' "$fmt"
+done
+
+want_v="$(dpkg-query -W -f='${Version}' ouch | sed 's/-[^-]*$//')"
+got_v="$(ouch --version 2>&1)"
+printf '%s\n' "$got_v"
+case "$got_v" in
+    *"$want_v"*) ;;
+    *) echo "ouch --version [$got_v] does not name the packaged version [$want_v]" >&2
+       exit 1 ;;
+esac
+
+echo "round-tripped four formats byte-identical, version $want_v"

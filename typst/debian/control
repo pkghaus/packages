@@ -1,0 +1,22 @@
+Source: typst
+Section: text
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ libssl-dev,
+ pkgconf,
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://typst.app
+
+Package: typst
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: markup-based typesetting system
+ Typst compiles marked-up text documents to PDF, SVG or PNG. Common
+ formatting is concise markup; everything beyond it is scriptable in
+ the same language, and errors are reported against source locations.
+ A watch mode recompiles incrementally on save.

@@ -1,0 +1,7 @@
+Tests: verify-key
+Depends: pkghaus-archive-keyring, gpg
+Restrictions: allow-stderr
+
+Tests: verify-signature
+Depends: pkghaus-archive-keyring, gpgv, sqv
+Restrictions: allow-stderr

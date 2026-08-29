@@ -1,0 +1,3 @@
+Tests: backup-restore
+Depends: rustic, coreutils
+Restrictions: allow-stderr

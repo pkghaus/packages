@@ -1,0 +1,5 @@
+# Not a Debian upload; there is no ITP bug to close.
+betterlockscreen: initial-upload-closes-no-bugs
+# Hooking sleep.target and suspend.target is the unit's whole purpose:
+# lock the screen before the machine suspends.
+betterlockscreen: systemd-service-file-refers-to-unusual-wantedby-target

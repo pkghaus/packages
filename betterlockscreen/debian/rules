@@ -1,0 +1,21 @@
+#!/usr/bin/make -f
+
+UNIT = debian/betterlockscreen/usr/lib/systemd/system/betterlockscreen@.service
+
+%:
+	dh $@
+
+# Upstream has no build system: the package is one shell script plus a
+# template systemd unit.
+override_dh_auto_build:
+
+override_dh_auto_install:
+	install -Dm0755 betterlockscreen debian/betterlockscreen/usr/bin/betterlockscreen
+	install -Dm0644 system/betterlockscreen@.service $(UNIT)
+# Upstream's install.sh drops the script in /usr/local/bin and the unit
+# hardcodes that path, so as shipped it points at a file a distro package
+# never creates. Rewrite it, then assert the rewrite matched: if upstream
+# changes the line, this build fails rather than shipping a dead unit.
+	sed -i 's|/usr/local/bin/betterlockscreen|/usr/bin/betterlockscreen|' $(UNIT)
+	grep -qx 'ExecStart=/usr/bin/betterlockscreen --lock' $(UNIT)
+	! grep -q '/usr/local/bin' $(UNIT)

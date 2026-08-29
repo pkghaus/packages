@@ -1,0 +1,7 @@
+# Not a Debian upload; there is no ITP bug to close.
+actionlint: initial-upload-closes-no-bugs
+# A statically linked pure-Go PIE executable, by design: no cgo paths,
+# so newer lintian sees no DT_NEEDED and flags it; trixie lintian calls
+# the same condition shared-library-lacks-prerequisites.
+actionlint: statically-linked-binary
+actionlint: shared-library-lacks-prerequisites

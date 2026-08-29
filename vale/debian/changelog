@@ -1,0 +1,30 @@
+vale (3.19.0-1) unstable; urgency=medium
+
+  * New upstream release
+  * Pin the Go toolchain to go1.25.7. GOTOOLCHAIN=auto built with
+    whatever go.mod asked for on the day, and the .buildinfo records
+    only the Debian golang-go that was installed, so nothing named the
+    compiler that actually ran.
+  * Add debian/watch.
+  * Add DEP-8 tests: lint prose in both directions with the built-in
+    Vale style, which needs no network, and assert vale --version names
+    the packaged version. The version check is not decoration: 3.18.0-1
+    was cut because an unstamped build reported "master", and a lint
+    test alone never touches --version.
+  * Standards-Version 4.7.2.0 (was 4.6.0); no changes needed.
+
+ -- pkg.haus archive <archive@pkg.haus>  Thu, 27 Aug 2026 12:46:56 +0200
+
+vale (3.18.0-1) unstable; urgency=medium
+
+  * New upstream release
+  * Stamp main.version from the changelog, as upstream's release build
+    does; vale --version reported "master"
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 21 Aug 2026 07:48:18 +0200
+
+vale (3.17.1-1) unstable; urgency=medium
+
+  * Initial release for the pkg.haus archive
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 16 Aug 2026 06:21:16 +0200

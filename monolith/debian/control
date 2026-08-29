@@ -1,0 +1,22 @@
+Source: monolith
+Section: web
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ libssl-dev,
+ pkgconf,
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://github.com/Y2Z/monolith
+
+Package: monolith
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: save any web page as a single self-contained HTML file
+ monolith downloads a web page and embeds every asset it references
+ (CSS, images, fonts, scripts) into one HTML file that renders
+ offline, using data: URIs. Options control scripting, media and
+ metadata inclusion.

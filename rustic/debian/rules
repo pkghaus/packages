@@ -1,0 +1,23 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	cargo clean
+	rm -rf completions
+
+override_dh_auto_build:
+	cargo build --release
+
+execute_after_dh_auto_build:
+	mkdir -p completions
+	target/release/rustic completions bash > completions/rustic.bash
+	target/release/rustic completions fish > completions/rustic.fish
+	target/release/rustic completions zsh > completions/_rustic
+
+override_dh_auto_install:
+	install -Dm0755 target/release/rustic debian/rustic/usr/bin/rustic
+	install -Dm0644 completions/rustic.bash debian/rustic/usr/share/bash-completion/completions/rustic
+	install -Dm0644 completions/rustic.fish debian/rustic/usr/share/fish/vendor_completions.d/rustic.fish
+	install -Dm0644 completions/_rustic debian/rustic/usr/share/zsh/vendor-completions/_rustic

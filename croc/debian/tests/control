@@ -1,0 +1,3 @@
+Tests: transfer
+Depends: croc, coreutils
+Restrictions: allow-stderr, isolation-container

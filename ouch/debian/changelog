@@ -1,0 +1,12 @@
+ouch (0.8.1-2) unstable; urgency=medium
+
+  * Report the packaged version; upstream tagged 0.8.1 before bumping
+    Cargo.toml, so the binary reported 0.8.0
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 21 Aug 2026 08:34:04 +0200
+
+ouch (0.8.1-1) unstable; urgency=medium
+
+  * Initial release for the pkg.haus archive
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 16 Aug 2026 06:21:16 +0200

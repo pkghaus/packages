@@ -1,0 +1,185 @@
+zola (0.23.4-1) unstable; urgency=medium
+
+  * New upstream release
+  * Install the fish completion under usr/share/fish/vendor_completions.d,
+    the vendor path, rather than fish's own completions directory
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 21 Aug 2026 07:27:31 +0200
+
+zola (0.23.3-3) unstable; urgency=high
+
+  * Install zola without the setuid bit; the binary was shipped mode
+    04755 (setuid root)
+  * Install the zsh completion under usr/share/zsh/vendor-completions,
+    where zsh actually looks
+  * Synopsis without the leading article; override embedded-library
+    (Rust links vendored C dependencies statically by design)
+
+ -- pkg.haus archive <archive@pkg.haus>  Sat, 15 Aug 2026 18:31:54 +0200
+
+zola (0.23.3-2) unstable; urgency=medium
+
+  * Migrate to the pkghaus build pipeline
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 14 Aug 2026 09:23:43 +0200
+
+zola (0.23.3-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <martin@simon.tf>  Tue, 11 Aug 2026 00:00:00 +0000
+
+zola (0.23.2-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <martin@simon.tf>  Fri, 07 Aug 2026 00:00:00 +0000
+
+zola (0.23.1-1) unstable; urgency=medium
+
+  * New upstream release
+  * Add ca-certificates dependency; 0.23 aborts without a system CA store
+
+ -- Martin Simon <martin@simon.tf>  Thu, 06 Aug 2026 00:00:00 +0000
+
+zola (0.22.1-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <martin@simon.tf>  Fri, 23 Jan 2026 00:00:00 +0000
+
+zola (0.22.0-2) unstable; urgency=medium
+
+  * Bookworm is now stable
+
+ -- Martin Simon <martin@simon.tf>  Wed, 14 Jan 2026 00:00:00 +0000
+
+zola (0.22.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <martin@simon.tf>  Sat, 10 Jan 2026 00:00:00 +0000
+
+zola (0.21.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <martin@simon.tf>  Tue, 15 Jul 2025 00:00:00 +0000
+
+zola (0.20.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <martin@simon.tf>  Fri, 15 Feb 2025 00:00:00 +0000
+
+zola (0.19.2-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <martin@simon.tf>  Fri, 16 Aug 2024 00:00:00 +0000
+
+zola (0.19.1-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <martin@simon.tf>  Tue, 25 Jun 2024 00:00:00 +0000
+
+zola (0.19.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <martin@simon.tf>  Fri, 21 Jun 2024 00:00:00 +0000
+
+zola (0.18.0-2) unstable; urgency=medium
+
+  * Bookworm is now stable
+
+ -- Martin Simon <me@martinsimon.me>  Tue, 19 Dec 2023 00:00:00 +0000
+
+zola (0.18.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Tue, 19 Dec 2023 00:00:00 +0000
+
+zola (0.17.2-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Sun, 19 Mar 2023 00:00:00 +0000
+
+zola (0.17.1-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Sat, 25 Feb 2023 00:00:00 +0000
+
+zola (0.17.0-1) unstable; urgency=medium
+
+  * New upstream release
+  * Generate completion files in `execute_after_dh_auto_build`
+
+ -- Martin Simon <me@martinsimon.me>  Fri, 17 Feb 2023 00:00:00 +0000
+
+zola (0.16.1-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Sun, 14 Aug 2022 00:00:00 +0000
+
+zola (0.16.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Sun, 17 Jul 2022 00:00:00 +0000
+
+zola (0.15.3-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Sun, 23 Jan 2022 00:00:00 +0000
+
+zola (0.15.2-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Sat, 11 Dec 2021 00:00:00 +0000
+
+zola (0.15.1-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Wed, 08 Dec 2021 00:00:00 +0000
+
+zola (0.15.0-1) unstable; urgency=medium
+
+  * New upstream release
+  * Update Debian Standards-Version
+
+ -- Martin Simon <me@martinsimon.me>  Sun, 05 Dec 2021 00:00:00 +0000
+
+zola (0.14.1-1) unstable; urgency=medium
+
+  * New upstream release
+  * Bullseye is now stable
+  * Improve Debian version and package name handling in Github Action
+
+ -- Martin Simon <me@martinsimon.me>  Tue, 24 Aug 2021 00:00:00 +0000
+
+zola (0.14.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Tue, 20 Jul 2021 00:00:00 +0000
+
+zola (0.13.0-2) unstable; urgency=medium
+
+  * strip binary (Closes: #1)
+
+ -- Martin Simon <me@martinsimon.me>  Thu, 29 Apr 2021 00:00:00 +0000
+
+zola (0.13.0-1) unstable; urgency=medium
+
+  * Version 0.13.0
+
+ -- Martin Simon <me@martinsimon.me>  Fri, 16 Apr 2021 00:00:00 +0000

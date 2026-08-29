@@ -1,0 +1,105 @@
+#!/bin/bash
+#
+# viddy is a watch(1) replacement: it runs a command on an interval, renders it
+# full-screen and keeps the history so earlier runs can be diffed. It needs a
+# terminal -- with stdout on a pipe there is nothing to drive -- so this test
+# gives it one with script(1), from bsdutils, which is Essential and therefore
+# needs no Depends entry.
+#
+# The pty that script allocates comes up 0x0, and a TUI given no room renders
+# nothing. stty inside the child sets a size before viddy starts; without it
+# this test would pass while asserting on an empty screen.
+#
+# What is asserted is not the screen but --save, which writes the run history
+# to SQLite. That is a far better witness than scraped terminal output: no
+# escape sequences to strip, and the schema separates what viddy was asked to
+# do from what it actually did. The command string lands in runtime_config and
+# the captured output in record.stdout, so asserting on record.stdout is what
+# distinguishes "ran the command" from "stored the command and ran nothing" --
+# a grep over the raw file would match either.
+#
+# The command's output changes every tick on purpose. A fixed string would be
+# satisfied by a single execution repeated from cache; counting distinct
+# outputs is what proves viddy re-ran it on the interval it was given.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+want="$(dpkg-query -W -f='${Version}' viddy | sed 's/-[^-]*$//')"
+reported="$(viddy --version 2>&1)"
+printf '%s\n' "$reported"
+case "$reported" in
+    *"$want"*) ;;
+    *) echo "viddy --version [$reported] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+DB="$WORK/history.db"
+cat > "$WORK/tick.sh" <<'SH'
+#!/bin/sh
+n=$(cat "$(dirname "$0")/counter" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "$(dirname "$0")/counter"
+echo "dep8-viddy-marker $n"
+SH
+chmod +x "$WORK/tick.sh"
+
+pty_pid=""
+cleanup() {
+    pkill -INT viddy 2>/dev/null
+    [ -n "$pty_pid" ] && kill "$pty_pid" 2>/dev/null
+    return 0
+}
+trap cleanup EXIT
+
+TERM=xterm-256color script -qec \
+    "stty rows 24 cols 80; viddy --interval 1s --save $DB sh $WORK/tick.sh" \
+    /dev/null >"$WORK/pty.log" 2>&1 &
+pty_pid=$!
+
+# Six seconds at a one-second interval leaves room for several ticks even on a
+# slow builder, while staying well inside any harness timeout.
+sleep 6
+pkill -INT viddy 2>/dev/null
+
+# Let the interrupt land and any in-flight write finish before reading.
+sleep 2
+
+# The database is created at startup and appended to as the command runs, not
+# written out on exit, so an absent one means viddy never got that far.
+if [ ! -s "$DB" ]; then
+    echo "viddy wrote no history to $DB" >&2
+    cat "$WORK/pty.log" >&2
+    exit 1
+fi
+
+stored_command="$(sqlite3 "$DB" 'SELECT command FROM runtime_config LIMIT 1;' 2>&1)"
+case "$stored_command" in
+    *tick.sh*) ;;
+    *) echo "runtime_config holds [$stored_command], not the command under test" >&2
+       exit 1 ;;
+esac
+
+records="$(sqlite3 "$DB" 'SELECT count(*) FROM record;' 2>&1)"
+if ! [ "$records" -ge 2 ] 2>/dev/null; then
+    echo "viddy recorded $records runs; expected at least 2 on a 1s interval over 6s" >&2
+    exit 1
+fi
+
+captured="$(sqlite3 "$DB" 'SELECT stdout FROM record ORDER BY id;' 2>&1)"
+case "$captured" in
+    *dep8-viddy-marker*) ;;
+    *) echo "no captured output names the marker: [$captured]" >&2
+       exit 1 ;;
+esac
+
+distinct="$(sqlite3 "$DB" 'SELECT count(DISTINCT stdout) FROM record;' 2>&1)"
+if ! [ "$distinct" -ge 2 ] 2>/dev/null; then
+    echo "all $records records captured identical output; the command ran once, not on an interval" >&2
+    printf '%s\n' "$captured" >&2
+    exit 1
+fi
+
+echo "viddy $want captured $records runs ($distinct distinct) of a changing command into SQLite"

@@ -1,0 +1,67 @@
+i3lock-color (2.13.c.5-4) unstable; urgency=medium
+
+  * Declare Provides, Conflicts and Replaces against i3lock; both ship
+    /usr/bin/i3lock and /etc/pam.d/i3lock, so installing Debian's i3lock
+    alongside this package failed with a dpkg file-overwrite error
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 21 Aug 2026 11:14:00 +0200
+
+i3lock-color (2.13.c.5-3) unstable; urgency=medium
+
+  * Migrate to the pkghaus build pipeline
+  * Declare autoconf and automake; the tag ships no generated configure
+  * Build-Depends on pkgconf, the trixie name for pkg-config
+
+ -- pkg.haus archive <archive@pkg.haus>  Sat, 15 Aug 2026 10:28:25 +0200
+
+i3lock-color (2.13.c.5-2) unstable; urgency=medium
+
+  * Bookworm is now stable
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Sat, 30 Oct 2021 00:00:00 +0000
+
+i3lock-color (2.13.c.4-2) unstable; urgency=medium
+
+  * Bullseye is now stable
+  * Update debhelper
+  * Improve Debian version and package name handling in Github Action
+
+ -- Martin Simon <me@martinsimon.me>  Sat, 30 Oct 2021 00:00:00 +0000
+
+i3lock-color (2.13.c.4-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Sat, 05 Jun 2021 00:00:00 +0000
+
+i3lock-color (2.13.c.3-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- Martin Simon <me@martinsimon.me>  Fri, 28 May 2021 00:00:00 +0000
+
+i3lock-color (2.13.c.2-1) unstable; urgency=medium
+
+  * Version 2.13.c.2
+  * Update watch
+
+ -- Martin Simon <me@martinsimon.me>  Tue, 16 Feb 2021 00:00:00 +0000
+
+i3lock-color (2.13.c.1-1) unstable; urgency=medium
+
+  * Version 2.13.c.1
+
+ -- Martin Simon <me@martinsimon.me>  Mon, 21 Dec 2020 00:00:00 +0000
+
+i3lock-color (2.12.c.5-1) unstable; urgency=medium
+
+  * Version 2.12.c.5
+
+ -- Martin Simon <me@martinsimon.me>  Thu, 23 Jul 2020 00:00:00 +0000
+
+i3lock-color (2.12.c.4-1) unstable; urgency=medium
+
+  * Version 2.12.c.4
+
+ -- Martin Simon <me@martinsimon.me>  Fri, 12 Jun 2020 00:00:00 +0000

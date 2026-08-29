@@ -1,0 +1,7 @@
+frp (0.71.0-1) unstable; urgency=medium
+
+  * Initial release for the pkg.haus archive
+  * Built without the optional web dashboards; their prebuilt assets are
+    not part of the source tag
+
+ -- pkg.haus archive <archive@pkg.haus>  Sat, 15 Aug 2026 18:20:38 +0200

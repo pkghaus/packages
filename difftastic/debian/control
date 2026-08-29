@@ -1,0 +1,21 @@
+Source: difftastic
+Section: utils
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://difftastic.wilfred.me.uk
+
+Package: difftastic
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: structural diff that understands syntax
+ difftastic (the difft binary) parses files with tree-sitter and diffs
+ the syntax trees, so changes are reported the way a reader sees them:
+ formatting-only edits show as unchanged, and real changes are
+ highlighted within lines. Over 30 programming languages are supported,
+ with a line-oriented fallback for everything else.

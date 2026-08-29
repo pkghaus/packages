@@ -1,0 +1,34 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+# actionlint's go.mod asks for a newer Go than the suite ships; let the Go
+# tool fetch that toolchain, the same trade the builder makes for Rust.
+export GOTOOLCHAIN := auto
+export GOFLAGS := -trimpath
+export GOCACHE := $(CURDIR)/.gocache
+export GOPATH := $(CURDIR)/.gopath
+
+%:
+	dh $@
+
+# Upstream's release build sets actionlint.version through ldflags. Left
+# unset it falls back to debug.ReadBuildInfo(), which appends +dirty because
+# adding debian/ makes the upstream clone a modified checkout.
+override_dh_auto_build:
+	go build -buildmode=pie \
+		-ldflags "-X github.com/rhysd/actionlint.version=$(DEB_VERSION_UPSTREAM)" \
+		-o actionlint ./cmd/actionlint
+
+# Upstream tests need network and external services; function is covered
+# by the packaging smoke test instead.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 actionlint debian/actionlint/usr/bin/actionlint
+
+override_dh_auto_clean:
+	rm -rf $(CURDIR)/.gocache $(CURDIR)/.gopath actionlint
+
+# dwz has nothing useful to do on Go binaries.
+override_dh_dwz:

@@ -1,0 +1,71 @@
+#!/bin/bash
+#
+# i3lock covers the screen and waits for a password. There is no batch mode and
+# no success message, so the check is structural: with a display present, the
+# packaged binary must create the window it locks with, and that window must
+# cover the whole screen. A locker that maps a small window, or none, has
+# failed at the one thing it exists to do.
+#
+# Screen geometry is fixed at 1024x768 here so the window's size can be
+# compared against a known value instead of whatever the server defaulted to.
+#
+# xauth is not a dependency of xvfb and has to be declared, or xvfb-run fails
+# setting up its cookie. -n keeps i3lock in the foreground; without it the
+# process forks and the pid this test holds is not the one drawing.
+
+set -euo pipefail
+
+if [ "${DEP8_UNDER_XVFB:-}" != 1 ]; then
+    export DEP8_UNDER_XVFB=1
+    exec xvfb-run -a --server-args="-screen 0 1024x768x24" "$0" "$@"
+fi
+
+want="$(dpkg-query -W -f='${Version}' i3lock-color | sed 's/-[^-]*$//')"
+reported="$(i3lock --version 2>&1)"
+printf '%s\n' "$reported"
+case "$reported" in
+    *"$want"*) ;;
+    *) echo "i3lock --version [$reported] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+lock_pid=""
+cleanup() { [ -n "$lock_pid" ] && kill "$lock_pid" 2>/dev/null; return 0; }
+trap cleanup EXIT
+
+i3lock --nofork --color 112233 &
+lock_pid=$!
+
+children=""
+for _ in $(seq 60); do
+    children="$(xwininfo -root -children 2>/dev/null || true)"
+    case "$children" in
+        *'"i3lock"'*) break ;;
+    esac
+    children=""
+    sleep 0.5
+done
+
+if [ -z "$children" ]; then
+    echo "i3lock mapped no window on the root display" >&2
+    xwininfo -root -children 2>&1 >&2 || true
+    exit 1
+fi
+
+if ! kill -0 "$lock_pid" 2>/dev/null; then
+    echo "i3lock exited instead of holding the screen" >&2
+    exit 1
+fi
+
+# The geometry is the assertion that separates a lock from any mapped window.
+geom="$(printf '%s\n' "$children" | grep '"i3lock"' | grep -oE '[0-9]+x[0-9]+\+[0-9]+\+[0-9]+' | head -1)"
+case "$geom" in
+    1024x768+0+0) ;;
+    *) echo "i3lock's window is [$geom], expected 1024x768+0+0 covering the screen" >&2
+       exit 1 ;;
+esac
+
+echo "i3lock $want covered a 1024x768 display with a full-screen window"

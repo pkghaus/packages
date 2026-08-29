@@ -1,0 +1,3 @@
+Tests: compile-pdf
+Depends: typst
+Restrictions: allow-stderr

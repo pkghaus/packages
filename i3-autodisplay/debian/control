@@ -1,0 +1,21 @@
+Source: i3-autodisplay
+Section: x11
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ golang-go,
+Rules-Requires-Root: no
+Standards-Version: 4.5.1
+Homepage: https://github.com/lpicanco/i3-autodisplay
+
+Package: i3-autodisplay
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ x11-xserver-utils,
+Description: display auto-configuration for i3wm
+ i3-autodisplay watches for monitor connect and disconnect events and
+ applies the configured xrandr layout, keeping i3 workspaces on their
+ assigned outputs.

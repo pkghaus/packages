@@ -1,0 +1,3 @@
+Tests: list-workflow
+Depends: act
+Restrictions: allow-stderr

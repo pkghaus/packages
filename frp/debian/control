@@ -1,0 +1,23 @@
+Source: frp
+Section: net
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ golang-go,
+Rules-Requires-Root: no
+Standards-Version: 4.6.0
+Homepage: https://github.com/fatedier/frp
+
+Package: frp
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: fast reverse proxy (frpc client and frps server)
+ frp exposes a local server that sits behind NAT or a firewall to the
+ internet through a machine with a public address. This package ships
+ both ends: the frps server and the frpc client, each driven by a single
+ TOML file; example configurations are installed as documentation. Built
+ from source without the optional browser dashboards, whose prebuilt
+ assets are not part of the source tag.

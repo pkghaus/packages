@@ -1,0 +1,4 @@
+# Not a Debian upload; there is no ITP bug to close.
+viddy: initial-upload-closes-no-bugs
+# Rust links its vendored C dependencies statically by design.
+viddy: embedded-library

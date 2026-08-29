@@ -1,0 +1,25 @@
+d2 (0.8.2-1) unstable; urgency=medium
+
+  * New upstream release
+  * Follow the upstream module path from oss.terrastruct.com/d2 to
+    github.com/d2lang/d2, which moved at v0.8.0. The version ldflag named the
+    old path, and Go silently ignores an -X for a symbol that does not exist,
+    so the binary would have reported the tree's stale literal instead of the
+    packaged version.
+  * Point UPSTREAM at github.com/d2lang/d2 rather than relying on the redirect
+  * Add debian/watch
+  * Standards-Version 4.7.2.0
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 28 Aug 2026 17:58:34 +0200
+
+d2 (0.7.1-2) unstable; urgency=medium
+
+  * Report the packaged version rather than v0.7.1-HEAD
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 21 Aug 2026 09:17:40 +0200
+
+d2 (0.7.1-1) unstable; urgency=medium
+
+  * Initial release for the pkg.haus archive
+
+ -- pkg.haus archive <archive@pkg.haus>  Sat, 15 Aug 2026 18:20:38 +0200

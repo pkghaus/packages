@@ -1,0 +1,36 @@
+#!/bin/bash
+#
+# Query JSON on stdin and reject what is not JSON. fx is an interactive viewer
+# with a non-interactive path, and that path is what a package can be gated on:
+# given an expression it prints the selected value and exits.
+#
+# Both directions, because a binary that failed on everything would pass a test
+# that only fed it malformed input, and one that never parsed anything would
+# pass a test that only fed it valid input.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+got="$(printf '{"a":{"b":42},"c":[1,2,3]}' | fx '.a.b')"
+printf 'selected: %s\n' "$got"
+[ "$got" = "42" ] || { echo "fx returned [$got] for .a.b, expected 42" >&2; exit 1; }
+
+got="$(printf '{"a":{"b":42},"c":[1,2,3]}' | fx '.c[1]')"
+[ "$got" = "2" ] || { echo "fx returned [$got] for .c[1], expected 2" >&2; exit 1; }
+
+# Malformed input must fail rather than print something confident.
+rc=0
+printf 'this is not json' | fx '.' >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 0 ] || { echo "fx exited 0 on input that is not JSON" >&2; exit 1; }
+
+want="$(dpkg-query -W -f='${Version}' fx | sed 's/-[^-]*$//')"
+got_v="$(fx --version 2>&1)"
+printf '%s\n' "$got_v"
+case "$got_v" in
+    *"$want"*) ;;
+    *) echo "fx --version [$got_v] does not name the packaged version [$want]" >&2; exit 1 ;;
+esac
+
+echo "queried JSON, rejected non-JSON, version $want"
