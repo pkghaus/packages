@@ -1,0 +1,195 @@
+name: Release
+
+# Merging releases. A push to master that changes a package's debian/changelog
+# builds it across every suite and architecture, tags it, and tells the archive
+# to ingest. Nobody types a git command.
+#
+# Why the tag this creates is lightweight, when every release before 2026-08-30
+# carried a detached signature: no GitHub API signs a tag. createCommitOnBranch
+# is the only signing mutation GraphQL exposes, and it signs commits. So the
+# choice was never "signed tag or unsigned tag" -- it was which object carries
+# the attestation. The merge commit already carries one: GitHub signs it
+# server-side, and records who pressed the button. A tag pointing at it is a
+# name for an already-attested tree, and the archive verifies nothing about the
+# tag object itself -- it clones --branch and rebuilds from source.
+#
+# The alternative was a bot identity holding a private key in Actions secrets.
+# That buys a signed tag object at the cost of a signing key on a runner, and it
+# still would not trigger anything: a ref created with GITHUB_TOKEN starts no
+# workflow, so it needs a second credential too. Two secrets for an attestation
+# the merge commit already makes.
+#
+# A hand-pushed signed tag still releases exactly as it did before -- build.yml
+# keeps its tag trigger, and the plan below drops any package already tagged, so
+# the two paths cannot both fire for one version.
+
+on:
+  push:
+    branches: [master]
+    # The changelog, not package.conf: the tag carries the Debian revision and
+    # that is where it lives. A packaging-only revision releases on this path
+    # too, which is why it does not need one of its own.
+    paths: ['*/debian/changelog']
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to release at master's current changelog version
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never cancel-in-progress. A cancelled release is a tag that may or may not
+  # exist against an archive that may or may not have been told about it, and
+  # working out which costs more than the runner minutes it saves.
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Decide what to release
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_work: ${{ steps.plan.outputs.has_work }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full, for two reasons that both fail quietly when missing: the diff
+          # needs the previous tip, and plan-release.sh reads local tags to
+          # decide what is already released. A shallow clone carries none, and
+          # every package would look unreleased.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve the release set
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          PACKAGE: ${{ inputs.package }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          # A dispatch names the package; the planner's input is a changed-path
+          # list, so synthesise the one path that means "this package". Covers
+          # the release whose changelog landed before this workflow existed, and
+          # any later one whose push event was missed.
+          #
+          # The monorepo started with no history, so it carries one tag and the
+          # other 24 packages' tags stayed in the repositories they came from. A
+          # dispatch for one of those backfills its tag at master, which is
+          # accurate -- a packaging change without a changelog revision would be
+          # a bug on its own -- and the ingest it fires plans zero work, because
+          # the archive already has that version.
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+              [ -f "$PACKAGE/package.conf" ] || {
+                  echo "::error::$PACKAGE is not a package directory" >&2
+                  exit 1
+              }
+              matrix="$(printf '%s\n' "$PACKAGE/debian/changelog" | scripts/plan-release.sh)"
+              count="$(printf '%s' "$matrix" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+              has_work=false
+              [ "$count" -gt 0 ] && has_work=true
+              printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+              printf 'has_work=%s\n' "$has_work" >> "$GITHUB_OUTPUT"
+              if [ "$count" -eq 0 ]; then
+                  printf '%s is already tagged at its changelog version.\n' "$PACKAGE" \
+                      >> "$GITHUB_STEP_SUMMARY"
+              else
+                  printf 'releasing %s\n' "$matrix" >> "$GITHUB_STEP_SUMMARY"
+              fi
+              exit 0
+          fi
+
+          before="$BEFORE"
+          # All-zeros is what a first push to a branch reports. Rare on master,
+          # but the diff against it fails rather than returning everything.
+          case "$before" in
+              ''|0000000000000000000000000000000000000000)
+                  before="$(git rev-parse "$SHA^")" ;;
+          esac
+
+          # On its own line, never inside the pipeline below. In a substitution
+          # its failure is invisible: the result comes back empty, nothing is
+          # planned, and the run goes green having released nothing.
+          changed="$(git diff --name-only "$before" "$SHA")" || {
+              echo "::error::cannot diff $before..$SHA" >&2
+              exit 1
+          }
+
+          matrix="$(printf '%s\n' "$changed" | scripts/plan-release.sh)"
+          count="$(printf '%s' "$matrix" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+          has_work=false
+          [ "$count" -gt 0 ] && has_work=true
+
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+          printf 'has_work=%s\n' "$has_work" >> "$GITHUB_OUTPUT"
+          printf 'releasing %s package(s): %s\n' "$count" "$matrix" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: ${{ matrix.entry.package }} ${{ matrix.entry.version }}
+    needs: plan
+    if: needs.plan.outputs.has_work == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    uses: pkghaus/action-debian-build/.github/workflows/build.yml@v1
+    with:
+      working_directory: ${{ matrix.entry.package }}
+    secrets: inherit
+
+  release:
+    name: release ${{ matrix.entry.package }}
+    # Skipped by default if build failed, which is the whole gate: no tag and no
+    # dispatch for a package that did not build. A re-run then re-plans, finds
+    # no tag, and builds again.
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      # Serialised, so two packages in one merge produce two ingests in a known
+      # order rather than racing the archive's concurrency group.
+      max-parallel: 1
+      matrix:
+        entry: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Tag the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ matrix.entry.tag }}
+          SHA: ${{ github.sha }}
+        run: |
+          # github.sha, not master's current tip: master can move while this
+          # runs, and the tag has to name the tree that was built.
+          #
+          # A 422 here means the tag appeared between the plan and now -- a hand
+          # pushed tag racing the merge. Loud on purpose: two release paths ran
+          # for one version and somebody should see which won.
+          gh api "repos/$REPO/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$SHA"
+
+      - name: Tell the archive to ingest
+        env:
+          TOKEN: ${{ secrets.APT_DISPATCH_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ matrix.entry.tag }}
+        run: |
+          # No silent skip on an empty token. The reusable build workflow has
+          # one because third parties call it without an archive; here an absent
+          # token means a package is tagged and the archive will never hear
+          # about it, which looks identical to a successful release.
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::APT_DISPATCH_TOKEN is empty; $TAG is tagged but unpublished" >&2
+            exit 1
+          fi
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/pkghaus/apt/dispatches \
+            -d "{\"event_type\":\"package-tagged\",\"client_payload\":{\"repository\":\"${REPOSITORY}\",\"tag\":\"${TAG}\"}}"
