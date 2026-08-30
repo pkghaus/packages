@@ -51,8 +51,13 @@ for e in rows:
 '
 
 printf '\n'
-if [ "$verify" != "success" ]; then
-    printf '**Verification did not pass for every package in this run** (`%s`). A package whose build or DEP-8 tests fail never gets a pull request, so a row above with no link may be waiting on a packaging change rather than on a merge.\n\n' "$verify"
-fi
+# failure or cancelled only. "skipped" is the normal state on a merge, where the
+# dashboard is re-rendered and nothing is meant to be built: warning there would
+# put "verification did not pass" on the issue after every successful merge.
+case "$verify" in
+    failure|cancelled)
+        printf '**Verification did not pass for every package in this run** (`%s`). A package whose build or DEP-8 tests fail never gets a pull request, so a row above with no link may be waiting on a packaging change rather than on a merge.\n\n' "$verify"
+        ;;
+esac
 printf 'Bumps are opened automatically and verified before they are opened. Merging one is not a release: the archive publishes on a signed tag.\n\n'
 printf 'Checked by %s\n' "$run_url"

@@ -23,6 +23,11 @@ on:
     # that, an unmerged bump would rebuild three suites on every run.
     - cron: '17 */6 * * *'
   workflow_dispatch:
+  push:
+    branches: [master]
+    # Only the file that can change the plan's answer. Without this filter every
+    # README or workflow commit re-renders the dashboard for nothing.
+    paths: ['*/package.conf']
 
 permissions:
   contents: read
@@ -62,7 +67,10 @@ jobs:
   verify:
     name: ${{ matrix.entry.package }} ${{ matrix.entry.tag }} / ${{ matrix.suite }}
     needs: plan
-    if: needs.plan.outputs.has_work == 'true'
+    # Not on a merge. A merge re-renders the dashboard and nothing else: building
+    # there would fire on someone else's bump landing, and open would raise pull
+    # requests for whatever unrelated packages happened to be behind at the time.
+    if: needs.plan.outputs.has_work == 'true' && github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -144,7 +152,10 @@ jobs:
   open:
     name: PR for ${{ matrix.entry.package }}
     needs: [plan, verify]
-    if: needs.plan.outputs.has_work == 'true' && needs.verify.result == 'success'
+    if: >-
+      needs.plan.outputs.has_work == 'true'
+      && needs.verify.result == 'success'
+      && github.event_name != 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write

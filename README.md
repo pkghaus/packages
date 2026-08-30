@@ -94,6 +94,11 @@ the tag is pushed, which is also when anything reaches the archive.
 One issue, `Upstream release drift`, is rewritten each run: what is behind, and
 where its pull request is. It closes itself when everything is current.
 
+It is also re-rendered whenever a `package.conf` lands on master, so merging a
+bump updates or closes it within seconds rather than leaving it wrong until the
+next scheduled run. A merge only re-renders: it never builds, and never opens a
+pull request for some unrelated package that happens to be behind at the time.
+
 It exists for the case a pull request cannot cover. A package whose build or
 DEP-8 tests fail never gets one, so without the issue that package would be
 invisible: no pull request, and a red run in a repository nobody watches
