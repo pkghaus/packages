@@ -35,15 +35,32 @@ suites. Pull the image first: a stale one can predate the pipeline's contract.
 
 ## Releasing
 
-Tags are namespaced by package, and the version matches `debian/changelog`:
+Merging releases. A merge to `master` that changes a package's
+`debian/changelog` builds that package for every suite and architecture, runs
+its DEP-8 tests, tags it `<package>/vX.Y.Z-N` at the merge commit, and tells the
+archive to ingest. Approving a bump pull request is the whole release.
+
+The changelog and not `package.conf`, because the tag carries the Debian
+revision and that is the only file it exists in. A packaging-only revision
+releases on the same path.
+
+That tag is a lightweight ref, deliberately. No GitHub API signs a tag:
+`createCommitOnBranch` is the only signing mutation GraphQL exposes and it signs
+commits, so the question was which object carries the attestation, not whether
+one does. The merge commit carries it. GitHub signs it server-side and records
+who pressed the button, and the archive verifies nothing about the tag object
+anyway, since it clones `--branch` and rebuilds from source.
+
+Pushing a signed tag by hand still works and still releases:
 
 ```sh
 git tag -s <package>/vX.Y.Z-N -m "<package> X.Y.Z-N"
 git push origin <package>/vX.Y.Z-N
 ```
 
-That builds the package for every suite and architecture, runs its DEP-8 tests,
-and tells the archive to ingest it. Tags are always signed.
+Both paths cannot fire for one version. The release plan drops any package whose
+tag already exists, which is also what makes a re-run and a changelog edit that
+does not bump into no-ops.
 
 Removing a package from `packages.txt` stops future builds. It does not remove
 the package from the archive, which is a separate deliberate act.
@@ -78,16 +95,21 @@ plain version tag, a package carrying an epoch, and any move that is not
 strictly forward. A downgrade is the one mistake here a reviewer skimming a
 two-line diff would not catch.
 
-### Why those pull requests have no checks
+### Checks on those pull requests
 
-A pull request opened with `GITHUB_TOKEN` triggers no workflows, so `build.yml`
-would never run on one. Rather than work around that with a credential, the
-bump is verified **before** the pull request exists: the workflow applies it and
-builds and DEP-8 tests the result across all three suites, and a package that
-fails never gets a pull request. The run is linked from the body.
+They are gated, not absent. This section claimed otherwise for a day and a half.
+Both runs on the first bump pull request were created three seconds after it
+opened and sat at `action_required`: GitHub holds workflows on a first-time
+contributor's pull request until somebody approves them, and
+`github-actions[bot]` was one. It has a merged pull request here now, so the
+gate may be gone. No bump has opened since to show it.
 
-That gate is amd64 only. The full three suites by two architectures runs when
-the tag is pushed, which is also when anything reaches the archive.
+Either way the bump is verified **before** the pull request exists: the workflow
+applies it and builds and DEP-8 tests the result across all three suites, and a
+package that fails never gets a pull request. The run is linked from the body.
+
+That gate is amd64 only. The full three suites by two architectures runs on the
+merge, which is also when anything reaches the archive.
 
 ### The dashboard
 
@@ -104,11 +126,10 @@ DEP-8 tests fail never gets one, so without the issue that package would be
 invisible: no pull request, and a red run in a repository nobody watches
 notifies nobody.
 
-### Merging is not releasing
+### Merging is releasing
 
-Merging a bump changes what is packaged. It publishes nothing. The archive
-publishes on a signed tag, and that stays manual: no GitHub API signs a tag, and
-a signing key never goes in CI.
+The changelog entry a bump adds is exactly what the release path keys on, so
+approving one publishes it. See [Releasing](#releasing).
 
 ## Adding a package
 

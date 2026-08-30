@@ -1,19 +1,24 @@
 name: Bump upstream versions
 
 # Opens one pull request per package whose upstream has released. It does the
-# mechanical half only: package.conf's VERSION and a debian/changelog entry. The
-# signed tag that actually releases stays manual, because no GitHub API signs a
-# tag and a signing key never goes in CI.
+# mechanical half only: package.conf's VERSION and a debian/changelog entry.
+# Merging it is what releases: release.yml takes the changelog change from
+# there, builds every suite and architecture, tags, and tells the archive to
+# ingest.
 #
 # Every upstream tag is tracked. No staleness threshold, no filtering, a
 # different tag string is the whole rule. croc cut six releases in five days in
 # August; that is the known cost of the policy.
 #
-# Why the pull request carries no checks, and why that is not a gap: a pull
-# request opened with GITHUB_TOKEN triggers no workflows, so build.yml would
-# never run on it. The verify job below builds and DEP-8 tests the bumped tree
-# BEFORE the pull request is opened, and a package that fails never gets one.
-# The run is linked from the body.
+# Checks on these pull requests are gated, not absent -- a claim this file made
+# for a day and a half and which was wrong. Both runs on the first one
+# (packages#5) were created three seconds after it opened and sat at
+# action_required: GitHub holds workflows on a first-time contributor's pull
+# request until somebody approves them, and github-actions[bot] was one. It has
+# a merged pull request here now, so the gate may be gone; no bump has opened
+# since to show it. Either way the verify job below builds and DEP-8 tests the
+# bumped tree BEFORE the pull request opens, and a package that fails never
+# gets one. The run is linked from the body.
 
 on:
   schedule:
@@ -230,20 +235,14 @@ jobs:
           dependency or an install path or a version stamp whose symbol moved, is
           not in here.
 
-          **This pull request carries no checks, and that is expected.** A pull
-          request opened with `GITHUB_TOKEN` triggers no workflows. The bump was
-          built and DEP-8 tested across all three suites before this was opened,
-          and a package that failed never gets a pull request at all:
+          It was built and DEP-8 tested across all three suites before this
+          opened, and a package that failed never gets a pull request at all:
 
           @RUN_URL@
 
-          Merging is not releasing. The archive publishes on a signed tag:
-
-              git tag -s @PKG@/v@VERSION@ -m "@PKG@ @VERSION@"
-              git push origin @PKG@/v@VERSION@
-
-          That tag runs the full three suites by two architectures with DEP-8,
-          then tells the archive to ingest.
+          **Merging releases it.** The merge builds `@PKG@` across three suites
+          and both architectures with DEP-8, tags it `@PKG@/v@VERSION@` at the
+          merge commit, and tells the archive to ingest. Nothing to type.
           EOF
           sed -i "s|@TAG@|$TAG|g; s|@PKG@|$PKG|g; s|@VERSION@|$VERSION|g; s|@RUN_URL@|$RUN_URL|g" body.md
 

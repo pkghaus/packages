@@ -173,6 +173,76 @@ echo "drift dashboard"
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 
+echo "release plan"
+(
+    # shellcheck source=scripts/plan-release.sh
+    . "$ROOT/scripts/plan-release.sh"
+
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    mk() { # name version
+        mkdir -p "$work/$1/debian"
+        printf '%s (%s) unstable; urgency=medium\n' "$1" "$2" > "$work/$1/debian/changelog"
+        : > "$work/$1/package.conf"
+    }
+    mk croc 11.3.6-1
+    mk vale 3.19.0-2
+    mk epoch 1:2.3-1
+    # A changelog in a directory that is not a package, and a changelog one
+    # level too deep. Both are shaped like the real thing.
+    mkdir -p "$work/docs/debian" "$work/vendor/sub/debian"
+    printf 'docs (1-1) unstable; urgency=medium\n'   > "$work/docs/debian/changelog"
+    printf 'sub (1-1) unstable; urgency=medium\n'    > "$work/vendor/sub/debian/changelog"
+    : > "$work/vendor/package.conf"
+
+    ROOT="$work"
+    tagged=""
+    tag_exists() { case " $tagged " in *" $1 "*) return 0 ;; esac; return 1; }
+    for_paths() { printf '%s\n' "$@" | plan 2>/dev/null; }
+
+    eq "a changed changelog releases at its changelog version" \
+       '[{"package":"croc","version":"11.3.6-1","tag":"croc/v11.3.6-1"}]' \
+       "$(for_paths croc/debian/changelog)"
+
+    # The trigger is the changelog, because the Debian revision exists nowhere
+    # else. package.conf moving on its own cannot name a tag.
+    eq "package.conf alone releases nothing" "[]" \
+       "$(for_paths croc/package.conf)"
+
+    eq "a directory without package.conf is not a package" "[]" \
+       "$(for_paths docs/debian/changelog)"
+
+    # '*/debian/changelog' as a glob would accept this and call the package
+    # 'vendor', which has a package.conf and would have released.
+    eq "a nested changelog does not name a package" "[]" \
+       "$(for_paths vendor/sub/debian/changelog)"
+
+    eq "two packages in one merge both release" "2" \
+       "$(for_paths croc/debian/changelog vale/debian/changelog | grep -o '"package"' | wc -l)"
+
+    eq "the same path twice releases once" "1" \
+       "$(for_paths croc/debian/changelog croc/debian/changelog | grep -o '"package"' | wc -l)"
+
+    # The idempotency key for the whole path: a re-run, a changelog edit that
+    # does not bump, and a hand-pushed tag all land here.
+    tagged="croc/v11.3.6-1"
+    eq "an existing tag drops that package" \
+       '[{"package":"vale","version":"3.19.0-2","tag":"vale/v3.19.0-2"}]' \
+       "$(for_paths croc/debian/changelog vale/debian/changelog)"
+    eq "and releases nothing when it was the only one" "[]" \
+       "$(for_paths croc/debian/changelog)"
+    tagged=""
+
+    # A colon cannot be in a ref. Skipping quietly would look exactly like a
+    # package with nothing to release, for as long as the epoch survives.
+    out="$(printf 'epoch/debian/changelog\n' | plan 2>&1)"; rc=$?
+    eq "an epoch fails rather than vanishing" "1" "$rc"
+    eq "and names the package that cannot be tagged" "1" \
+       "$(printf '%s' "$out" | grep -c 'epoch 1:2.3-1 cannot be a tag name')"
+
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
 echo
 if [ "$fail" -eq 0 ]; then
     echo "all tests passed"
