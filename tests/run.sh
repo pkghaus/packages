@@ -5,9 +5,13 @@
 #
 #   tests/run.sh
 #
-# The fixtures are reached only through functions sourced from the script under
-# test, which static analysis cannot follow.
-# shellcheck disable=SC2317,SC2329
+# Three habits of this file that shellcheck reads as mistakes, all deliberate.
+# Each group runs in a subshell so its environment cannot leak into the next,
+# hence the subshell-local assignment warnings. The fixtures are reached only
+# through functions sourced from the script under test, which static analysis
+# cannot follow. And the backticks in the expected markdown are code formatting,
+# not command substitution.
+# shellcheck disable=SC2016,SC2030,SC2031,SC2317,SC2329
 
 set -uo pipefail
 
@@ -144,6 +148,28 @@ echo "bump plan"
     eq "nothing behind produces an empty array" "[]" "$(plan)"
 
     rm -rf "$work"
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
+echo "drift dashboard"
+(
+    render() { bash "$ROOT/scripts/drift-report.sh" "$1" "$2" "https://e/r"; }
+    one='[{"package":"croc","tag":"v11.3.6"}]'
+
+    eq "a behind package gets a row" "1" \
+       "$(render "$one" success | grep -c '| `croc` | `v11.3.6` |')"
+
+    # skipped is the normal state on a merge, where the dashboard re-renders and
+    # nothing is meant to be built. Warning there would put "verification did
+    # not pass" on the issue after every successful merge.
+    eq "a failed verify warns"      "1" "$(render "$one" failure   | grep -c 'did not pass')"
+    eq "a cancelled verify warns"   "1" "$(render "$one" cancelled | grep -c 'did not pass')"
+    eq "a skipped verify does not"  "0" "$(render "$one" skipped   | grep -c 'did not pass')"
+    eq "a successful verify does not" "0" "$(render "$one" success | grep -c 'did not pass')"
+
+    eq "every row is rendered, not just the first" "2" \
+       "$(render '[{"package":"a","tag":"v1"},{"package":"b","tag":"v2"}]' success | grep -c '^| `')"
+
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 
