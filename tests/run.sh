@@ -109,6 +109,44 @@ echo "upstream bump"
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 
+echo "bump plan"
+(
+    # shellcheck source=scripts/plan-bumps.sh
+    . "$ROOT/scripts/plan-bumps.sh"
+
+    work="$(mktemp -d)"
+    mk() { # dir version [format]
+        mkdir -p "$work/$1/debian/source"
+        printf '%s\n' "${3:-3.0 (quilt)}" > "$work/$1/debian/source/format"
+        printf 'UPSTREAM=https://github.com/x/%s.git\nVERSION=%s\n' "$1" "$2" > "$work/$1/package.conf"
+    }
+    mk behind v1.0.0
+    mk current v2.0.0
+    mk native 2026.08.15 "3.0 (native)"
+    printf 'behind\ncurrent\nnative\n' > "$work/packages.txt"
+
+    # The upstream is stubbed, so this exercises the plan's own decisions and
+    # nothing else. Overriding after the source is the point of the guard.
+    latest_tag() { case "$1" in x/behind) echo v1.1.0 ;; x/current) echo v2.0.0 ;; *) echo v9 ;; esac; }
+    ROOT="$work"; PACKAGES_FILE="$work/packages.txt"; REPO=""
+
+    out="$(plan)"
+
+    # The regression this exists for: the row append was once deleted while the
+    # open-pull-request check above it was rewritten, so the plan detected drift
+    # and emitted nothing. It ran green for a day because every package happened
+    # to be current, and an empty plan is indistinguishable from a correct one
+    # until something is actually behind.
+    eq "a package behind upstream produces a row" \
+       '[{"package":"behind","tag":"v1.1.0"}]' "$out"
+
+    mk behind v1.1.0
+    eq "nothing behind produces an empty array" "[]" "$(plan)"
+
+    rm -rf "$work"
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
 echo
 if [ "$fail" -eq 0 ]; then
     echo "all tests passed"

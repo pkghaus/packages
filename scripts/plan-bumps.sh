@@ -35,47 +35,59 @@ is_native() {
     esac
 }
 
-rows=""
-while read -r pkg; do
-    case "$pkg" in ''|\#*) continue ;; esac
-    pkg="${pkg%%[[:space:]]*}"
+# The loop is a function so tests can source this file and override latest_tag.
+# Everything above is definitions, everything below runs.
+plan() {
+    local rows="" pkg conf ours upstream_url slug newest upstream_version want
+    while read -r pkg; do
+        case "$pkg" in ''|\#*) continue ;; esac
+        pkg="${pkg%%[[:space:]]*}"
 
-    conf="$ROOT/$pkg/package.conf"
-    [ -f "$conf" ] || { printf 'SKIP %s: no package.conf\n' "$pkg" >&2; continue; }
-    is_native "$pkg" && continue
+        conf="$ROOT/$pkg/package.conf"
+        [ -f "$conf" ] || { printf 'SKIP %s: no package.conf\n' "$pkg" >&2; continue; }
+        is_native "$pkg" && continue
 
-    ours="$(sed -n 's/^VERSION=//p' "$conf" | head -n1)"
-    upstream_url="$(sed -n 's/^UPSTREAM=//p' "$conf" | head -n1)"
-    slug="${upstream_url#https://github.com/}"
-    slug="${slug%.git}"
-    [ -n "$ours" ] && [ -n "$slug" ] || { printf 'SKIP %s: package.conf incomplete\n' "$pkg" >&2; continue; }
+        ours="$(sed -n 's/^VERSION=//p' "$conf" | head -n1)"
+        upstream_url="$(sed -n 's/^UPSTREAM=//p' "$conf" | head -n1)"
+        slug="${upstream_url#https://github.com/}"
+        slug="${slug%.git}"
+        [ -n "$ours" ] && [ -n "$slug" ] || { printf 'SKIP %s: package.conf incomplete\n' "$pkg" >&2; continue; }
 
-    # A lookup that fails is not a package that is current. Reported and skipped
-    # rather than silently treated as up to date.
-    newest="$(latest_tag "$slug" || true)"
-    [ -n "$newest" ] || { printf 'SKIP %s: no release or tag found for %s\n' "$pkg" "$slug" >&2; continue; }
-    [ "$ours" != "$newest" ] || continue
+        # A lookup that fails is not a package that is current. Reported and
+        # skipped rather than silently treated as up to date.
+        newest="$(latest_tag "$slug" || true)"
+        [ -n "$newest" ] || { printf 'SKIP %s: no release or tag found for %s\n' "$pkg" "$slug" >&2; continue; }
+        [ "$ours" != "$newest" ] || continue
 
-    # An open pull request for this exact version already carries the work, and
-    # merging it is what changes package.conf on master. Without this check the
-    # package stays "behind" and is rebuilt across three suites on every run
-    # until someone merges: a week of an unmerged croc bump is 84 builds at six
-    # hourly.
-    #
-    # Keyed on the version, not the package, so a genuinely newer upstream
-    # release is never suppressed by an older pull request still sitting open.
-    if [ -n "$REPO" ] && command -v gh >/dev/null 2>&1; then
-        # The same mapping bump-upstream.sh uses: strip the leading run of
-        # non-digits, so lychee-v0.24.2 and v11.3.5 both become bare versions.
-        upstream_version="${newest#"${newest%%[0-9]*}"}"
-        want="bump/$pkg/$upstream_version-1"
-        if gh pr list --repo "$REPO" --state open --json headRefName \
-             --jq '.[].headRefName' 2>/dev/null | grep -qxF "$want"; then
-            printf 'SKIP %s: %s is already open as %s\n' "$pkg" "$newest" "$want" >&2
-            continue
+        # An open pull request for this exact version already carries the work,
+        # and merging it is what changes package.conf on master. Without this
+        # check the package stays "behind" and is rebuilt across three suites on
+        # every run until someone merges: a week of an unmerged bump is 84 builds
+        # at six hourly.
+        #
+        # Keyed on the version, not the package, so a genuinely newer upstream
+        # release is never suppressed by an older pull request still open.
+        if [ -n "$REPO" ] && command -v gh >/dev/null 2>&1; then
+            # The same mapping bump-upstream.sh uses: strip the leading run of
+            # non-digits, so lychee-v0.24.2 and v11.3.5 both become bare.
+            upstream_version="${newest#"${newest%%[0-9]*}"}"
+            want="bump/$pkg/$upstream_version-1"
+            if gh pr list --repo "$REPO" --state open --json headRefName \
+                 --jq '.[].headRefName' 2>/dev/null | grep -qxF "$want"; then
+                printf 'SKIP %s: %s is already open as %s\n' "$pkg" "$newest" "$want" >&2
+                continue
+            fi
         fi
-    fi
 
-done < "$PACKAGES_FILE"
+        rows="$rows,{\"package\":\"$(json_escape "$pkg")\",\"tag\":\"$(json_escape "$newest")\"}"
+    done < "$PACKAGES_FILE"
 
-printf '[%s]\n' "${rows#,}"
+    printf '[%s]\n' "${rows#,}"
+}
+
+# shellcheck disable=SC2317
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+    return 0
+fi
+
+plan
