@@ -30,6 +30,12 @@ on:
     # that is where it lives. A packaging-only revision releases on this path
     # too, which is why it does not need one of its own.
     paths: ['*/debian/changelog']
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to release at master's current changelog version
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -61,9 +67,42 @@ jobs:
       - name: Resolve the release set
         id: plan
         env:
+          EVENT: ${{ github.event_name }}
+          PACKAGE: ${{ inputs.package }}
           BEFORE: ${{ github.event.before }}
           SHA: ${{ github.sha }}
         run: |
+          # A dispatch names the package; the planner's input is a changed-path
+          # list, so synthesise the one path that means "this package". Covers
+          # the release whose changelog landed before this workflow existed, and
+          # any later one whose push event was missed.
+          #
+          # The monorepo started with no history, so it carries one tag and the
+          # other 24 packages' tags stayed in the repositories they came from. A
+          # dispatch for one of those backfills its tag at master, which is
+          # accurate -- a packaging change without a changelog revision would be
+          # a bug on its own -- and the ingest it fires plans zero work, because
+          # the archive already has that version.
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+              [ -f "$PACKAGE/package.conf" ] || {
+                  echo "::error::$PACKAGE is not a package directory" >&2
+                  exit 1
+              }
+              matrix="$(printf '%s\n' "$PACKAGE/debian/changelog" | scripts/plan-release.sh)"
+              count="$(printf '%s' "$matrix" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+              has_work=false
+              [ "$count" -gt 0 ] && has_work=true
+              printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+              printf 'has_work=%s\n' "$has_work" >> "$GITHUB_OUTPUT"
+              if [ "$count" -eq 0 ]; then
+                  printf '%s is already tagged at its changelog version.\n' "$PACKAGE" \
+                      >> "$GITHUB_STEP_SUMMARY"
+              else
+                  printf 'releasing %s\n' "$matrix" >> "$GITHUB_STEP_SUMMARY"
+              fi
+              exit 0
+          fi
+
           before="$BEFORE"
           # All-zeros is what a first push to a branch reports. Rare on master,
           # but the diff against it fails rather than returning everything.

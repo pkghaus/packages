@@ -62,6 +62,11 @@ Both paths cannot fire for one version. The release plan drops any package whose
 tag already exists, which is also what makes a re-run and a changelog edit that
 does not bump into no-ops.
 
+`release.yml` also takes a `workflow_dispatch` naming one package, which
+releases it at whatever version `master`'s changelog currently carries. That is
+the recovery path when a push event was missed, and the way to release a
+changelog that landed before any of this existed.
+
 Removing a package from `packages.txt` stops future builds. It does not remove
 the package from the archive, which is a separate deliberate act.
 
