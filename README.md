@@ -35,10 +35,11 @@ suites. Pull the image first: a stale one can predate the pipeline's contract.
 
 ## Releasing
 
-Merging releases. A merge to `master` that changes a package's
+Landing releases. Any commit on `master` that changes a package's
 `debian/changelog` builds that package for every suite and architecture, runs
-its DEP-8 tests, tags it `<package>/vX.Y.Z-N` at the merge commit, and tells the
-archive to ingest. Approving a bump pull request is the whole release.
+its DEP-8 tests, tags it `<package>/vX.Y.Z-N` at that commit, and tells the
+archive to ingest. That is true of a bump the automation lands unattended and of
+a change you push yourself.
 
 The changelog and not `package.conf`, because the tag carries the Debian
 revision and that is the only file it exists in. A packaging-only revision
@@ -73,7 +74,7 @@ the package from the archive, which is a separate deliberate act.
 ## Upstream drift
 
 A scheduled workflow checks every enrolled package against its upstream every
-six hours and opens a pull request for each one that has fallen behind. It
+six hours, and lands a commit on `master` for each one that has fallen behind.
 rewrites
 `package.conf`'s `VERSION` and adds a `debian/changelog` entry, and nothing
 else.
@@ -100,41 +101,57 @@ plain version tag, a package carrying an epoch, and any move that is not
 strictly forward. A downgrade is the one mistake here a reviewer skimming a
 two-line diff would not catch.
 
-### Checks on those pull requests
+### Nothing approves a bump
 
-They are gated, not absent. This section claimed otherwise for a day and a half.
-Both runs on the first bump pull request were created three seconds after it
-opened and sat at `action_required`: GitHub holds workflows on a first-time
-contributor's pull request until somebody approves them, and
-`github-actions[bot]` was one. It has a merged pull request here now, so the
-gate may be gone. No bump has opened since to show it.
+Each one is built and DEP-8 tested across all three suites **before** it lands,
+and a package that fails is not landed. That gate is amd64 only; the full three
+suites by two architectures runs on the commit, which is also when anything
+reaches the archive, and a third time at ingest.
 
-Either way the bump is verified **before** the pull request exists: the workflow
-applies it and builds and DEP-8 tests the result across all three suites, and a
-package that fails never gets a pull request. The run is linked from the body.
-
-That gate is amd64 only. The full three suites by two architectures runs on the
-merge, which is also when anything reaches the archive.
+The land job asks about its own package's legs rather than the run's aggregate.
+Gating on the aggregate would let one broken package hold every other package's
+bump for as long as it stayed broken.
 
 ### The dashboard
 
-One issue, `Upstream release drift`, is rewritten each run: what is behind, and
-where its pull request is. It closes itself when everything is current.
+One issue, `Upstream release drift`, rewritten each run and closed when there is
+nothing to say. With nobody approving anything it is the only place any of this
+is visible, so it carries what a person watching merges would have noticed
+without being asked:
 
-It is also re-rendered whenever a `package.conf` lands on master, so merging a
-bump updates or closes it within seconds rather than leaving it wrong until the
-next scheduled run. A merge only re-renders: it never builds, and never opens a
-pull request for some unrelated package that happens to be behind at the time.
+- **A status per row.** `landed, releasing`, `verification failed`,
+  `not verified`. It used to print one line for the whole run, and which package
+  it meant could be inferred from an empty pull-request column. There are no
+  pull requests now, so nothing is left to infer from.
+- **Packages the archive does not serve.** If a release build fails after the
+  changelog has landed, `package.conf` still matches upstream, so the drift
+  check calls the package current while users get the old version, and nothing
+  retries. A second table names those, per architecture. Re-release one with the
+  Release workflow.
 
-It exists for the case a pull request cannot cover. A package whose build or
-DEP-8 tests fail never gets one, so without the issue that package would be
-invisible: no pull request, and a red run in a repository nobody watches
-notifies nobody.
+A package whose verification failed appears with nothing else to show for it:
+no commit was made, and a red run in a repository nobody watches notifies no
+one.
 
-### Merging is releasing
+### Landing is releasing
 
-The changelog entry a bump adds is exactly what the release path keys on, so
-approving one publishes it. See [Releasing](#releasing).
+The changelog entry a bump writes is exactly what the release path keys on, so
+the commit publishes it. See [Releasing](#releasing).
+
+### The keyring is human-only
+
+`pkghaus-archive-keyring/` ships the public half of the archive signing key: it
+is what apt uses to verify every other package here, so changing it is how a
+compromise escalates. Three things keep the automation out of it. Two are
+conventions inside the workflow they constrain, and so fail open if that
+workflow is wrong: `plan-bumps.sh` skips a native package, and the commit
+pathspec names only the bumped package's two files. The third does not.
+`check-keyring-author.sh` reads what actually landed and refuses a bot-authored
+commit that touches the directory, whatever the workflow believed it was doing.
+It runs in CI and again in the release path, before anything is built.
+
+It reads the author's *name*, not the email: a person with email privacy on has
+the same `users.noreply.github.com` domain the bot does.
 
 ## Adding a package
 

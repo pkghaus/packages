@@ -64,6 +64,24 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Before anything is planned, let alone published. The bump cannot reach
+      # pkghaus-archive-keyring/ by two conventions that both live inside the
+      # workflow they constrain; this one does not, and it runs on the path that
+      # would otherwise build and publish whatever landed. CI checks the same
+      # thing separately, but CI failing does not stop a release.
+      - name: Refuse a bot-authored write to the keyring
+        if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          before="$BEFORE"
+          case "$before" in
+              ''|0000000000000000000000000000000000000000)
+                  before="$(git rev-parse "$SHA^")" ;;
+          esac
+          scripts/check-keyring-author.sh "$before" "$SHA"
+
       - name: Resolve the release set
         id: plan
         env:

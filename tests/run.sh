@@ -153,22 +153,47 @@ echo "bump plan"
 
 echo "drift dashboard"
 (
-    render() { bash "$ROOT/scripts/drift-report.sh" "$1" "$2" "https://e/r"; }
-    one='[{"package":"croc","tag":"v11.3.6"}]'
+    report="$ROOT/scripts/drift-report.sh"
+    two='[{"package":"a","tag":"v1"},{"package":"b","tag":"v2"}]'
+    one='[{"package":"a","tag":"v1"}]'
+    render() { "$report" "$1" "$2" "$3" https://run/1; }
 
     eq "a behind package gets a row" "1" \
-       "$(render "$one" success | grep -c '| `croc` | `v11.3.6` |')"
-
-    # skipped is the normal state on a merge, where the dashboard re-renders and
-    # nothing is meant to be built. Warning there would put "verification did
-    # not pass" on the issue after every successful merge.
-    eq "a failed verify warns"      "1" "$(render "$one" failure   | grep -c 'did not pass')"
-    eq "a cancelled verify warns"   "1" "$(render "$one" cancelled | grep -c 'did not pass')"
-    eq "a skipped verify does not"  "0" "$(render "$one" skipped   | grep -c 'did not pass')"
-    eq "a successful verify does not" "0" "$(render "$one" success | grep -c 'did not pass')"
+       "$(render "$one" "$(printf 'a\tsuccess')" '[]' | grep -c '^| `a`')"
 
     eq "every row is rendered, not just the first" "2" \
-       "$(render '[{"package":"a","tag":"v1"},{"package":"b","tag":"v2"}]' success | grep -c '^| `')"
+       "$(render "$two" "$(printf 'a\tsuccess\nb\tsuccess')" '[]' | grep -c '^| `')"
+
+    # The status is per row now. It used to be one line for the whole run, and
+    # which package it meant was inferred from an empty pull-request column --
+    # a column Stage 2 removes.
+    eq "a passing package says it landed" "1" \
+       "$(render "$one" "$(printf 'a\tsuccess')" '[]' | grep -c 'landed, releasing')"
+    eq "a failed package says so, in its own row" "1" \
+       "$(render "$two" "$(printf 'a\tsuccess\nb\tfailure')" '[]' \
+          | grep -c '^| `b`.*verification failed')"
+    eq "and the passing one alongside it still says landed" "1" \
+       "$(render "$two" "$(printf 'a\tsuccess\nb\tfailure')" '[]' \
+          | grep -c '^| `a`.*landed')"
+    eq "a cancelled package says cancelled" "1" \
+       "$(render "$one" "$(printf 'a\tcancelled')" '[]' | grep -c 'verification cancelled')"
+
+    # The load-bearing one. A package the status table never mentioned must not
+    # read as fine, or a reporter that silently found nothing looks like a clean
+    # run.
+    eq "a package with no status reads as not verified" "1" \
+       "$(render "$one" "" '[]' | grep -c 'not verified')"
+    eq "and never as landed" "0" \
+       "$(render "$one" "" '[]' | grep -c 'landed')"
+
+    stuck='[{"package":"ouch","arch":"arm64","packaged":"0.8.3-1","published":"0.8.2-1"}]'
+    eq "nothing stuck renders no second table" "0" \
+       "$(render "$one" "$(printf 'a\tsuccess')" '[]' | grep -c 'Packaged but not published')"
+    eq "a stuck package renders the second table" "1" \
+       "$(render "$one" "$(printf 'a\tsuccess')" "$stuck" | grep -c 'Packaged but not published')"
+    eq "and names the package, arch and both versions" "1" \
+       "$(render "$one" "$(printf 'a\tsuccess')" "$stuck" \
+          | grep -c '^| `ouch` | arm64 | `0.8.3-1` | `0.8.2-1` |')"
 
     exit $((fail > 0))
 ) || fail=$((fail + 1))
@@ -239,6 +264,140 @@ echo "release plan"
     eq "an epoch fails rather than vanishing" "1" "$rc"
     eq "and names the package that cannot be tagged" "1" \
        "$(printf '%s' "$out" | grep -c 'epoch 1:2.3-1 cannot be a tag name')"
+
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
+echo "keyring guard"
+(
+    guard="$ROOT/scripts/check-keyring-author.sh"
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    git -C "$work" init -q -b master .
+    mk() { # author file
+        mkdir -p "$work/$(dirname "$2")"
+        echo "$2 $RANDOM" > "$work/$2"
+        git -C "$work" add -A
+        git -C "$work" -c user.name="$1" -c user.email=x@y.z \
+            -c commit.gpgsign=false commit -q -m "touch $2"
+    }
+    at() { git -C "$work" rev-parse HEAD; }
+    run() { ROOT="$work" "$guard" "$1" HEAD >/dev/null 2>&1; echo $?; }
+
+    mk "Martin Simon" README.md
+    base="$(at)"
+
+    # A person may change the keyring. That is the whole point: it is the one
+    # directory the automation must not reach, not one nobody may touch.
+    mk "Martin Simon" pkghaus-archive-keyring/debian/changelog
+    eq "a person may touch the keyring"        "0" "$(run "$base")"
+    b2="$(at)"
+
+    mk "github-actions[bot]" croc/package.conf
+    eq "a bot may touch an ordinary package"   "0" "$(run "$b2")"
+    b3="$(at)"
+
+    mk "github-actions[bot]" pkghaus-archive-keyring/debian/changelog
+    eq "a bot may not touch the keyring"       "1" "$(run "$b3")"
+
+    # The range, not just the tip. The bad commit has to sit BEHIND the tip for
+    # this to test anything -- the first version of this assertion put it AT the
+    # tip, so a check that read only the tip still passed it. Caught by mutating
+    # rev-list to -1.
+    mk "Martin Simon" README.md
+    eq "a bad commit behind the tip still fails" "1" "$(run "$b3")"
+    eq "and the tip alone is clean"              "0" "$(run "$(git -C "$work" rev-parse HEAD~1)")"
+
+    # Email cannot distinguish them -- a person with email privacy on has the
+    # same users.noreply.github.com domain as the bot -- so the check reads the
+    # author name. This asserts the domain alone does not trip it.
+    mkdir -p "$work/pkghaus-archive-keyring/debian"
+    echo x > "$work/pkghaus-archive-keyring/debian/control"
+    git -C "$work" add -A
+    git -C "$work" -c user.name="Martin Simon" \
+        -c user.email="1234+barnumbirr@users.noreply.github.com" \
+        -c commit.gpgsign=false commit -q -m "human with a noreply address"
+    eq "a noreply address alone is not a bot"  "0" "$(run "$(git -C "$work" rev-parse HEAD~1)")"
+
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
+echo "verify status"
+(
+    vs="$ROOT/scripts/verify-status.sh"
+    jobs='{"jobs":[
+      {"name":"Find upstream releases","conclusion":"success"},
+      {"name":"a v1 / trixie","conclusion":"success"},
+      {"name":"a v1 / testing","conclusion":"success"},
+      {"name":"a v1 / unstable","conclusion":"success"},
+      {"name":"b v2 / trixie","conclusion":"failure"},
+      {"name":"b v2 / testing","conclusion":"success"},
+      {"name":"b v2 / unstable","conclusion":"cancelled"},
+      {"name":"Drift dashboard","conclusion":"success"}]}'
+    m='[{"package":"a","tag":"v1"},{"package":"b","tag":"v2"},{"package":"c","tag":"v3"}]'
+    got="$(printf '%s' "$jobs" | "$vs" "$m")"
+
+    eq "all legs green is success"        "a	success"   "$(printf '%s\n' "$got" | grep '^a')"
+    # failure outranks cancelled: a cancelled leg alongside a real failure must
+    # not soften the verdict.
+    eq "any failing leg is failure"       "b	failure"   "$(printf '%s\n' "$got" | grep '^b')"
+    eq "a package with no legs is unknown" "c	unknown"  "$(printf '%s\n' "$got" | grep '^c')"
+    eq "jobs that are not legs are ignored" "3"          "$(printf '%s\n' "$got" | grep -c .)"
+
+    cx='{"jobs":[{"name":"a v1 / trixie","conclusion":"cancelled"},
+                 {"name":"a v1 / testing","conclusion":"success"}]}'
+    eq "cancelled without failure is cancelled" "a	cancelled" \
+       "$(printf '%s' "$cx" | "$vs" '[{"package":"a","tag":"v1"}]')"
+
+    # gh api --paginate --slurp wraps the pages in a list. A run with more than
+    # a page of jobs must not lose the ones on page two.
+    pg='[{"jobs":[{"name":"a v1 / trixie","conclusion":"success"}]},
+         {"jobs":[{"name":"a v1 / testing","conclusion":"failure"}]}]'
+    eq "a paginated payload is read across pages" "a	failure" \
+       "$(printf '%s' "$pg" | "$vs" '[{"package":"a","tag":"v1"}]')"
+
+    ip='{"jobs":[{"name":"a v1 / trixie","status":"in_progress","conclusion":null}]}'
+    eq "an unfinished leg is named, not rounded to success" "a	in_progress" \
+       "$(printf '%s' "$ip" | "$vs" '[{"package":"a","tag":"v1"}]')"
+
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
+echo "published check"
+(
+    . "$ROOT/scripts/check-published.sh"
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    mk() { mkdir -p "$work/$1/debian"
+           printf '%s (%s) unstable; urgency=medium\n' "$1" "$2" > "$work/$1/debian/changelog"; }
+    mk ouch 0.8.3-1
+    mk croc 11.3.6-1
+    printf 'ouch\ncroc\n' > "$work/packages.txt"
+    printf 'Package: ouch\nVersion: 0.8.2-1\n\nPackage: croc\nVersion: 11.3.6-1\n' > "$work/amd64"
+    cp "$work/amd64" "$work/arm64"
+
+    ROOT="$work"; PACKAGES_FILE="$work/packages.txt"; ARCHES="amd64 arm64"
+    fetch_index() { cat "$work/$1"; }
+
+    out="$(published)"
+    eq "a package the archive serves at an older version is reported" "2" \
+       "$(printf '%s' "$out" | grep -o '"package":"ouch"' | wc -l)"
+    eq "a current package is not"                                     "0" \
+       "$(printf '%s' "$out" | grep -o '"package":"croc"' | wc -l)"
+
+    printf 'Package: croc\nVersion: 11.3.6-1\n' > "$work/arm64"
+    eq "a package absent from one arch is reported for that arch" "1" \
+       "$(published | grep -o '"published":"<absent>"' | wc -l)"
+
+    cp "$work/amd64" "$work/arm64"
+    sed -i 's/0.8.2-1/0.8.3-1/' "$work/amd64" "$work/arm64"
+    eq "everything published is an empty array" "[]" "$(published)"
+
+    # A network failure must not read as "every package is stuck". It reports
+    # nothing and fails, so the caller can tell the difference.
+    fetch_index() { return 1; }
+    published >/dev/null 2>&1
+    eq "an unreadable index fails rather than reporting" "1" "$?"
 
     exit $((fail > 0))
 ) || fail=$((fail + 1))
