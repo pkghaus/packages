@@ -1,3 +1,8 @@
 version=4
+# The version group is (\d[^-]*) and not (\d\S+): \S+ accepts a prerelease
+# suffix, so uscan reported 1.6.0-rc1 over 1.6.0, 4.4.1-beta-1 over 4.4.0 and
+# rustic's 10.0.0-rc_corrected over 0.11.4. A tag carries no prerelease flag,
+# so excluding the suffix in the pattern is the only place it can be done. No
+# packaged upstream version in this fleet contains a hyphen, checked.
 opts=filenamemangle=s/.+\/v?(\d\S+)\.tar\.gz/<project>-$1\.tar\.gz/ \
-  https://github.com/pb-/gotypist/tags .*/v?(\d\S+)\.tar\.gz
+  https://github.com/pb-/gotypist/tags .*/v?(\d[^-]*)\.tar\.gz

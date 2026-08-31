@@ -23,7 +23,7 @@ Build-Depends:
  libxkbcommon-dev,
  libxkbcommon-x11-dev,
 Rules-Requires-Root: no
-Standards-Version: 4.5.1
+Standards-Version: 4.7.2.0
 Homepage: https://github.com/Raymo111/i3lock-color
 
 Package: i3lock-color

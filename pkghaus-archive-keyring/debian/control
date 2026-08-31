@@ -6,7 +6,7 @@ Build-Depends:
  debhelper-compat (= 13),
  gnupg,
 Rules-Requires-Root: no
-Standards-Version: 4.6.0
+Standards-Version: 4.7.2.0
 Homepage: https://pkg.haus
 
 Package: pkghaus-archive-keyring
