@@ -40,3 +40,30 @@ jobs:
             --workdir /repo \
             rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 \
             -color
+
+  keyring-author:
+    name: The keyring is human-only
+    # Push only. On a pull request the commits are not on master yet and the
+    # range is the branch's own, which says nothing about what will land.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The whole history, because the check walks a commit range and a
+          # shallow clone has no range to walk.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Refuse a bot-authored write to the keyring
+        env:
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          before="$BEFORE"
+          case "$before" in
+              ''|0000000000000000000000000000000000000000)
+                  before="$(git rev-parse "$SHA^")" ;;
+          esac
+          scripts/check-keyring-author.sh "$before" "$SHA"

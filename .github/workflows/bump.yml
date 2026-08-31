@@ -1,24 +1,40 @@
 name: Bump upstream versions
 
-# Opens one pull request per package whose upstream has released. It does the
-# mechanical half only: package.conf's VERSION and a debian/changelog entry.
-# Merging it is what releases: release.yml takes the changelog change from
-# there, builds every suite and architecture, tags, and tells the archive to
-# ingest.
+# Lands one commit on master per package whose upstream has released, then
+# dispatches release.yml for it: that builds every suite and architecture, tags
+# at the commit and tells the archive to ingest. Nobody approves anything.
+#
+# The dispatch is explicit rather than left to release.yml's own push trigger,
+# because a push made with GITHUB_TOKEN starts no workflow run. Relying on it
+# would land bumps on master that were never built, tagged or published, while
+# the dashboard read them as current: package.conf would match upstream, which
+# is the only question the drift check asks.
 #
 # Every upstream tag is tracked. No staleness threshold, no filtering, a
 # different tag string is the whole rule. croc cut six releases in five days in
 # August; that is the known cost of the policy.
 #
-# Checks on these pull requests are gated, not absent -- a claim this file made
-# for a day and a half and which was wrong. Both runs on the first one
-# (packages#5) were created three seconds after it opened and sat at
-# action_required: GitHub holds workflows on a first-time contributor's pull
-# request until somebody approves them, and github-actions[bot] was one. It has
-# a merged pull request here now, so the gate may be gone; no bump has opened
-# since to show it. Either way the verify job below builds and DEP-8 tests the
-# bumped tree BEFORE the pull request opens, and a package that fails never
-# gets one. The run is linked from the body.
+# Each package is built and DEP-8 tested across all three suites BEFORE its
+# commit, and the land job asks about its own package's legs rather than the
+# run's aggregate -- one broken package must not hold every other package's bump
+# for as long as it stays broken.
+#
+# This used to open pull requests, which put a person between the bump and the
+# archive. Removing them removed two things that person was doing without being
+# asked. They could tell which package had failed, because a failed one had no
+# pull request and its dashboard row's link column was empty; and if a release
+# build failed after a merge they might connect the red run to what they had
+# just merged. The dashboard now states both -- a status per row, and a table of
+# packages whose changelog the archive does not serve -- because otherwise the
+# failure mode of all this is silence.
+#
+# The one directory this must never write is pkghaus-archive-keyring/: it ships
+# the public half of the archive signing key, so changing it is how a compromise
+# escalates. Three things stop that, and the third does not live in this file:
+# plan-bumps.sh skips a native package, signed-commit's pathspec names only the
+# bumped package's two files, and check-keyring-author.sh refuses a bot-authored
+# commit that touches it whatever this workflow believes it is doing.
+
 
 on:
   schedule:
@@ -102,13 +118,122 @@ jobs:
         with:
           SUITE: ${{ matrix.suite }}
           WORKING_DIRECTORY: ${{ matrix.entry.package }}
+  land:
+    name: land ${{ matrix.entry.package }}
+    needs: [plan, verify]
+    # always(), because the gate is per package rather than per run. verify is a
+    # matrix and needs.verify.result is its aggregate, so gating on success would
+    # let one broken package hold every other package's bump indefinitely --
+    # betterlockscreen would have blocked croc for as long as it stayed broken.
+    # The step below asks about this package only.
+    if: >-
+      always()
+      && needs.plan.outputs.has_work == 'true'
+      && github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      # To dispatch release.yml below. workflow_dispatch and repository_dispatch
+      # are the two events GITHUB_TOKEN can still start; an ordinary push is not.
+      actions: write
+    strategy:
+      fail-fast: false
+      # Serialised, and load-bearing. signed-commit reads expectedHeadOid from
+      # the local HEAD, so each commit needs master's tip as it is after the
+      # previous one landed. In parallel the second write is rejected.
+      max-parallel: 1
+      matrix:
+        entry: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # master, not github.sha: the tip moves as earlier packages in this
+          # matrix land, and committing against a stale oid is refused.
+          ref: master
+          persist-credentials: false
+
+      - name: Refuse to land a package whose verification did not pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          MATRIX: ${{ needs.plan.outputs.matrix }}
+          PKG: ${{ matrix.entry.package }}
+        run: |
+          # --slurp because a run with more than a page of jobs would otherwise
+          # lose the legs on page two, and a package whose legs went missing
+          # reads as unverified, which stops it landing. Silence is not consent.
+          status="$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --paginate --slurp \
+                    | scripts/verify-status.sh "$MATRIX" \
+                    | awk -v p="$PKG" -F'\t' '$1 == p { print $2 }')"
+          printf 'verification for %s: %s\n' "$PKG" "${status:-<none>}"
+          if [ "$status" != "success" ]; then
+              echo "::warning::$PKG did not pass verification (${status:-unknown}); not landing it" >&2
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+        id: gate
+
+      - name: Apply the bump
+        if: steps.gate.outputs.skip != 'true'
+        id: bump
+        env:
+          PKG: ${{ matrix.entry.package }}
+          TAG: ${{ matrix.entry.tag }}
+        run: |
+          out="$(scripts/bump-upstream.sh "$PKG" "$TAG")"
+          printf '%s\n' "$out"
+          line="$(printf '%s\n' "$out" | grep ' -> ' | tail -1)"
+          if [ -z "$line" ]; then
+            echo "::error::bump-upstream.sh exited 0 without a result line" >&2
+            exit 1
+          fi
+          printf 'version=%s\n' "${line##* }" >> "$GITHUB_OUTPUT"
+
+      # Landing IS releasing. The changelog entry this writes is what
+      # release.yml keys on, so the commit below builds every suite and
+      # architecture, tags at itself, and tells the archive to ingest.
+      - name: Commit to master, signed
+        if: steps.gate.outputs.skip != 'true'
+        uses: pkghaus/signed-commit@v1
+        with:
+          workdir: .
+          branch: master
+          message: "${{ matrix.entry.package }}: new upstream release ${{ steps.bump.outputs.version }}"
+          # The pathspec is one of the two things keeping this out of
+          # pkghaus-archive-keyring/. The other is check-keyring-author.sh,
+          # which does not live inside the workflow it constrains.
+          pathspec: |
+            ${{ matrix.entry.package }}/package.conf
+            ${{ matrix.entry.package }}/debian/changelog
+          token: ${{ github.token }}
+
+      # release.yml also triggers on a push to master touching a changelog, and
+      # that trigger will NOT fire here: a push made with GITHUB_TOKEN starts no
+      # workflow run. workflow_dispatch is one of the two events it can still
+      # start, which is the same reason release.yml dispatches the archive
+      # rather than relying on the tag it creates to trigger build.yml.
+      #
+      # Harmless if the push trigger ever does fire as well. plan-release.sh
+      # drops any package whose tag already exists, so whichever run gets there
+      # first releases and the other plans nothing. That idempotency was built
+      # for a hand-pushed tag racing a merge and covers this too.
+      - name: Release it
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PKG: ${{ matrix.entry.package }}
+        run: |
+          gh workflow run release.yml --repo "$REPO" -f package="$PKG"
+          printf 'dispatched release for %s\n' "$PKG" >> "$GITHUB_STEP_SUMMARY"
 
   report:
     name: Drift dashboard
-    needs: [plan, verify, open]
+    needs: [plan, verify, land]
     # always(): a run whose verification failed is exactly the run whose outcome
-    # nobody would otherwise see. No pull request opens for such a package, and
-    # a red run in a repository nobody watches notifies no one.
+    # nobody would otherwise see. Nothing lands for such a package, and a red run
+    # in a repository nobody watches notifies no one.
     if: always() && needs.plan.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -122,9 +247,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
           MATRIX: ${{ needs.plan.outputs.matrix }}
           HAS_WORK: ${{ needs.plan.outputs.has_work }}
-          VERIFY: ${{ needs.verify.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           title='Upstream release drift'
@@ -133,17 +258,31 @@ jobs:
           number="$(gh issue list --repo "$REPO" --state open --json number,title \
               --jq ".[] | select(.title == \"$title\") | .number" | head -n1)"
 
-          if [ "$HAS_WORK" != "true" ]; then
+          # A package packaged but not published is invisible to the drift check
+          # above -- package.conf matches upstream, so it reads as current -- and
+          # nothing retries it. An unreadable archive reports nothing rather than
+          # inventing 25 stuck packages, so a blip cannot fill the issue.
+          stuck='[]'
+          if out="$(scripts/check-published.sh 2>/dev/null)"; then
+              stuck="$out"
+          else
+              echo "::warning::could not read the archive; skipping the published check" >&2
+          fi
+
+          if [ "$HAS_WORK" != "true" ] && [ "$stuck" = "[]" ]; then
               if [ -n "$number" ]; then
                   gh issue close "$number" --repo "$REPO" \
-                      --comment "Every enrolled package matches its newest upstream release. Checked by $RUN_URL"
+                      --comment "Every enrolled package matches its newest upstream release and the archive serves it. Checked by $RUN_URL"
               else
                   echo "nothing to report"
               fi
               exit 0
           fi
 
-          scripts/drift-report.sh "$MATRIX" "$VERIFY" "$RUN_URL" > body.md
+          status="$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --paginate --slurp \
+                    | scripts/verify-status.sh "$MATRIX" || true)"
+
+          scripts/drift-report.sh "$MATRIX" "$status" "$stuck" "$RUN_URL" > body.md
           if [ -z "$number" ]; then
               # A mention notifies only in newly created content, and being
               # mentioned subscribes the team to the issue, which is what makes
@@ -152,106 +291,4 @@ jobs:
               gh issue create --repo "$REPO" --title "$title" --body-file opening.md
           else
               gh issue edit "$number" --repo "$REPO" --body-file body.md
-          fi
-
-  open:
-    name: PR for ${{ matrix.entry.package }}
-    needs: [plan, verify]
-    if: >-
-      needs.plan.outputs.has_work == 'true'
-      && needs.verify.result == 'success'
-      && github.event_name != 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    strategy:
-      fail-fast: false
-      matrix:
-        entry: ${{ fromJSON(needs.plan.outputs.matrix) }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Apply the bump
-        id: bump
-        env:
-          PKG: ${{ matrix.entry.package }}
-          TAG: ${{ matrix.entry.tag }}
-        run: |
-          out="$(scripts/bump-upstream.sh "$PKG" "$TAG")"
-          printf '%s\n' "$out"
-          # The last line matching, not the first: stderr is merged nowhere here,
-          # but a future warning ahead of the result would otherwise be parsed as
-          # the package name. No match is a hard failure rather than an empty
-          # version reaching a pull request title.
-          line="$(printf '%s\n' "$out" | grep ' -> ' | tail -1)"
-          if [ -z "$line" ]; then
-            echo "::error::bump-upstream.sh exited 0 without a result line" >&2
-            exit 1
-          fi
-          printf 'version=%s\n' "${line##* }" >> "$GITHUB_OUTPUT"
-
-      - name: Create the branch
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          BRANCH: bump/${{ matrix.entry.package }}/${{ steps.bump.outputs.version }}
-        run: |
-          base="$(git rev-parse HEAD)"
-          # A branch left by an earlier run for the same version is reused: the
-          # commit below replaces its tree wholesale, so a retry converges.
-          gh api "repos/$REPO/git/refs" -f "ref=refs/heads/$BRANCH" -f "sha=$base" \
-            || gh api "repos/$REPO/git/refs/heads/$BRANCH" -X PATCH -f "sha=$base" -F force=true
-          git checkout -q -b "$BRANCH"
-
-      - name: Commit, signed
-        uses: pkghaus/signed-commit@v1
-        with:
-          workdir: .
-          branch: bump/${{ matrix.entry.package }}/${{ steps.bump.outputs.version }}
-          message: "${{ matrix.entry.package }}: new upstream release ${{ steps.bump.outputs.version }}"
-          pathspec: |
-            ${{ matrix.entry.package }}/package.conf
-            ${{ matrix.entry.package }}/debian/changelog
-          token: ${{ github.token }}
-
-      - name: Open the pull request
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          BRANCH: bump/${{ matrix.entry.package }}/${{ steps.bump.outputs.version }}
-          PKG: ${{ matrix.entry.package }}
-          TAG: ${{ matrix.entry.tag }}
-          VERSION: ${{ steps.bump.outputs.version }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          cat > body.md <<'EOF'
-          Upstream released `@TAG@`.
-
-          This rewrites `@PKG@/package.conf` and adds a `debian/changelog` entry,
-          and nothing else. Anything further this release needs, a build
-          dependency or an install path or a version stamp whose symbol moved, is
-          not in here.
-
-          It was built and DEP-8 tested across all three suites before this
-          opened, and a package that failed never gets a pull request at all:
-
-          @RUN_URL@
-
-          **Merging releases it.** The merge builds `@PKG@` across three suites
-          and both architectures with DEP-8, tags it `@PKG@/v@VERSION@` at the
-          merge commit, and tells the archive to ingest. Nothing to type.
-          EOF
-          sed -i "s|@TAG@|$TAG|g; s|@PKG@|$PKG|g; s|@VERSION@|$VERSION|g; s|@RUN_URL@|$RUN_URL|g" body.md
-
-          existing="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open \
-                        --json url --jq '.[0].url // empty')"
-          if [ -n "$existing" ]; then
-            gh pr edit "$existing" --title "$PKG: new upstream release $VERSION" --body-file body.md
-            echo "updated $existing"
-          else
-            gh pr create --repo "$REPO" --head "$BRANCH" --base master \
-              --title "$PKG: new upstream release $VERSION" --body-file body.md
           fi
