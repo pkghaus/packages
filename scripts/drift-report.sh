@@ -59,5 +59,5 @@ case "$verify" in
         printf '**Verification did not pass for every package in this run** (`%s`). A package whose build or DEP-8 tests fail never gets a pull request, so a row above with no link may be waiting on a packaging change rather than on a merge.\n\n' "$verify"
         ;;
 esac
-printf 'Bumps are opened automatically and verified before they are opened. Merging one is not a release: the archive publishes on a signed tag.\n\n'
+printf 'Bumps are opened automatically and verified before they are opened. Merging one releases it: the build, the tag and the archive ingest all follow from the merge.\n\n'
 printf 'Checked by %s\n' "$run_url"
