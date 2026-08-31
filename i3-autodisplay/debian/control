@@ -6,7 +6,7 @@ Build-Depends:
  debhelper-compat (= 13),
  golang-go,
 Rules-Requires-Root: no
-Standards-Version: 4.5.1
+Standards-Version: 4.7.2.0
 Homepage: https://github.com/lpicanco/i3-autodisplay
 
 Package: i3-autodisplay

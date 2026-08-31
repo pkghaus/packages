@@ -5,4 +5,4 @@ version=4
 # so excluding the suffix in the pattern is the only place it can be done. No
 # packaged upstream version in this fleet contains a hyphen, checked.
 opts=filenamemangle=s/.+\/v?(\d\S+)\.tar\.gz/<project>-$1\.tar\.gz/ \
-  https://github.com/Raymo111/i3lock-color/tags .*/v?(\d[^-]*)\.tar\.gz
+  https://github.com/ouch-org/ouch/tags .*/v?(\d[^-]*)\.tar\.gz

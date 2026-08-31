@@ -8,7 +8,7 @@ Build-Depends:
  libncurses-dev,
  libxml2-dev,
 Rules-Requires-Root: no
-Standards-Version: 4.6.0
+Standards-Version: 4.7.2.0
 Homepage: https://github.com/Titor8115/mandown
 
 Package: mandown
