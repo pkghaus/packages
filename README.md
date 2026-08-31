@@ -135,8 +135,21 @@ one.
 
 ### Landing is releasing
 
-The changelog entry a bump writes is exactly what the release path keys on, so
-the commit publishes it. See [Releasing](#releasing).
+A bump lands its commit on `master` and then dispatches the release for that
+package, which builds it, tags it and tells the archive to ingest. See
+[Releasing](#releasing).
+
+The dispatch is explicit, and has to be. `release.yml` also fires on a push to
+`master` that touches a changelog, but **a push made with `GITHUB_TOKEN` starts
+no workflow run** -- only `workflow_dispatch` and `repository_dispatch` do. That
+is the same reason `release.yml` dispatches the archive rather than letting the
+tag it creates trigger `build.yml`. Relying on the push trigger would land bumps
+that were never built, tagged or published, while the dashboard read them as
+current: `package.conf` would match upstream, which is the only question the
+drift check asks.
+
+Both firing is harmless. The release plan drops any package whose tag already
+exists, so whichever run gets there first releases and the other plans nothing.
 
 ### The keyring is human-only
 
