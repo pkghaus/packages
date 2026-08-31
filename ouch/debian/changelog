@@ -1,3 +1,9 @@
+ouch (0.8.2-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Mon, 31 Aug 2026 05:36:26 +0000
+
 ouch (0.8.1-2) unstable; urgency=medium
 
   * Report the packaged version; upstream tagged 0.8.1 before bumping
