@@ -151,6 +151,21 @@ echo "bump plan"
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 
+echo "release in flight"
+(
+    inflight="$ROOT/scripts/release-in-flight.sh"
+
+    # The direction that matters. An unreachable API must not read as "nothing
+    # is running": that is what turns a network blip into an issue accusing a
+    # release of having failed.
+    eq "an unreachable packages repo counts as in flight" "yes" \
+       "$(PACKAGES_REPO=pkghaus/does-not-exist-xyz "$inflight")"
+    eq "an unreachable archive repo counts as in flight" "yes" \
+       "$(ARCHIVE_REPO=pkghaus/does-not-exist-xyz "$inflight")"
+
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
 echo "drift dashboard"
 (
     report="$ROOT/scripts/drift-report.sh"
@@ -177,6 +192,20 @@ echo "drift dashboard"
           | grep -c '^| `a`.*landed')"
     eq "a cancelled package says cancelled" "1" \
        "$(render "$one" "$(printf 'a\tcancelled')" '[]' | grep -c 'verification cancelled')"
+
+    # An issue raised only by the stuck check used to open with a bare header
+    # and nothing under it, which is the first thing a reader sees and has to
+    # decode. The stuck table below already followed this rule; the upstream
+    # one did not.
+    stuck='[{"package":"k","arch":"amd64","packaged":"2","published":"1"}]'
+    eq "nothing behind upstream prints no table header" "0" \
+       "$(render '[]' '' "$stuck" | grep -c '^| package | upstream tag')"
+    eq "it says so in words instead" "1" \
+       "$(render '[]' '' "$stuck" | grep -c 'Every enrolled package matches its newest upstream release')"
+    eq "and the stuck table is still rendered beneath it" "1" \
+       "$(render '[]' '' "$stuck" | grep -c '^| `k` | amd64')"
+    eq "a behind package still gets its header" "1" \
+       "$(render "$one" "$(printf 'a\tsuccess')" '[]' | grep -c '^| package | upstream tag')"
 
     # The load-bearing one. A package the status table never mentioned must not
     # read as fine, or a reporter that silently found nothing looks like a clean

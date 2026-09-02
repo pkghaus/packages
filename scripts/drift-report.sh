@@ -17,10 +17,14 @@
 # was empty -- that column was doing double duty as a status by accident. With
 # no pull requests there is no accident left to rely on.
 #
-# Packaged but not published. If a release build fails after the changelog is
-# already on master, package.conf matches upstream and every later drift run
-# calls the package current while the archive serves the old version. Nothing
-# retries it and, until this table, nothing named it.
+# Packaged but not published. If a release or a publish fails after the
+# changelog is already on master, package.conf matches upstream and every later
+# drift run calls the package current while the archive serves the old version.
+# Nothing retries it and, until this table, nothing named it.
+#
+# The table is rendered only when nothing is in flight (see
+# release-in-flight.sh), because a release in progress is indistinguishable from
+# one that failed and this section used to assert the failure as fact.
 
 # Two deliberate single-quotings that shellcheck reads as mistakes: the python3
 # body must not be expanded by the shell, and the backticks in the markdown are
@@ -57,13 +61,20 @@ WORDS = {
 }
 
 rows = json.load(sys.stdin)
-print("| package | upstream tag | status |")
-print("|---|---|---|")
-for e in rows:
-    pkg, tag = e["package"], e["tag"]
-    st = status.get(pkg, "unknown")
-    word = WORDS.get(st) or ("**" + st + "**")
-    print("| `%s` | `%s` | %s |" % (pkg, tag, word))
+# The same rule the stuck table below already follows: no table when it would
+# have no rows. This one used to print its header unconditionally, so an issue
+# raised solely by the stuck check opened with a bare header and nothing under
+# it -- which is what a reader sees first and has to work out means "nothing".
+if not rows:
+    print("Every enrolled package matches its newest upstream release.")
+else:
+    print("| package | upstream tag | status |")
+    print("|---|---|---|")
+    for e in rows:
+        pkg, tag = e["package"], e["tag"]
+        st = status.get(pkg, "unknown")
+        word = WORDS.get(st) or ("**" + st + "**")
+        print("| `%s` | `%s` | %s |" % (pkg, tag, word))
 '
 
 printf '\n'
@@ -72,7 +83,7 @@ printf '\n'
 # teaches the reader to skip the area it will one day appear in.
 if [ "$stuck" != "[]" ] && [ -n "$stuck" ]; then
     printf '### Packaged but not published\n\n'
-    printf 'These carry a `debian/changelog` version the archive does not serve. A release build failed after the changelog landed, so nothing retries and the drift check above reports them current.\n\n'
+    printf 'These carry a `debian/changelog` version the archive does not serve, with no release or ingest running. Usually a release or a publish that failed after the changelog landed; nothing retries either, and the drift check above reports them current because package.conf matches upstream.\n\n'
     printf '%s' "$stuck" | python3 -c '
 import json, sys
 rows = json.load(sys.stdin)

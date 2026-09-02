@@ -262,11 +262,29 @@ jobs:
           # above -- package.conf matches upstream, so it reads as current -- and
           # nothing retries it. An unreadable archive reports nothing rather than
           # inventing 25 stuck packages, so a blip cannot fill the issue.
+          #
+          # Not while a release is running. The comparison cannot tell a release
+          # in progress from one that failed -- in both, the changelog is on
+          # master and the archive is not caught up -- and on 2026-09-02 it
+          # accused a release that was succeeding as it wrote, having started
+          # one second earlier. A real failure is still reported, six hours
+          # later, by a run with nothing in flight.
+          in_flight="$(scripts/release-in-flight.sh)"
           stuck='[]'
-          if out="$(scripts/check-published.sh 2>/dev/null)"; then
+          if [ "$in_flight" = yes ]; then
+              echo "a release or ingest is running; skipping the published check"
+          elif out="$(scripts/check-published.sh 2>/dev/null)"; then
               stuck="$out"
           else
               echo "::warning::could not read the archive; skipping the published check" >&2
+          fi
+
+          # Closing needs both checks to have actually run. With one skipped,
+          # "nothing to report" is not established -- leave the issue alone and
+          # let the next run decide.
+          if [ "$HAS_WORK" != "true" ] && [ "$in_flight" = yes ]; then
+              echo "nothing behind upstream; published check skipped, leaving the issue as it is"
+              exit 0
           fi
 
           if [ "$HAS_WORK" != "true" ] && [ "$stuck" = "[]" ]; then
