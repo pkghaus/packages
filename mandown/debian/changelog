@@ -1,3 +1,12 @@
+mandown (1.0.5.2-2) unstable; urgency=medium
+
+  * Build with Debian's hardening flags. Upstream's Makefile assigns CFLAGS and
+    LDFLAGS outright rather than appending, which discarded them entirely.
+  * Build reproducibly: identical bytes across build path, hostname, locale,
+    timezone, umask, CPU count and file ordering.
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 02 Sep 2026 11:04:53 +0200
+
 mandown (1.0.5.2-1) unstable; urgency=medium
 
   * Migrate to the pkghaus build pipeline

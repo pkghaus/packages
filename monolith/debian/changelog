@@ -1,3 +1,15 @@
+monolith (2.10.1-2) unstable; urgency=high
+
+  * Link against the system OpenSSL. The previous build statically linked a
+    private OpenSSL 3.4.1 into a package for a suite shipping 3.5.x, declared no
+    libssl dependency, and could not be reached by a Debian security update.
+  * Build reproducibly: identical bytes across build path, hostname, locale,
+    timezone, umask, CPU count and file ordering.
+  * Record the Rust toolchain among the build dependencies, so the build can be
+    reproduced from its .buildinfo.
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 02 Sep 2026 11:04:53 +0200
+
 monolith (2.10.1-1) unstable; urgency=medium
 
   * Initial release for the pkg.haus archive
