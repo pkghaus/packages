@@ -1,3 +1,13 @@
+gotypist (0.8.2-2) unstable; urgency=medium
+
+  * Trim the build path out of the binary.
+  * Build reproducibly: identical bytes across build path, hostname, locale,
+    timezone, umask, CPU count and file ordering.
+  * Publish this version's source package and build record at
+    buildinfos.pkg.haus, so anyone can reproduce the build and check it.
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 02 Sep 2026 11:38:12 +0200
+
 gotypist (0.8.2-1) unstable; urgency=medium
 
   * New upstream release

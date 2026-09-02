@@ -1,3 +1,10 @@
+i3lock-color (2.13.c.5-5) unstable; urgency=medium
+
+  * Publish this version's source package and build record at
+    buildinfos.pkg.haus, so anyone can reproduce the build and check it.
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 02 Sep 2026 11:38:11 +0200
+
 i3lock-color (2.13.c.5-4) unstable; urgency=medium
 
   * Declare Provides, Conflicts and Replaces against i3lock; both ship

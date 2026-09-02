@@ -1,3 +1,10 @@
+vegeta (12.13.0-3) unstable; urgency=medium
+
+  * Publish this version's source package and build record at
+    buildinfos.pkg.haus, so anyone can reproduce the build and check it.
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 02 Sep 2026 11:38:12 +0200
+
 vegeta (12.13.0-2) unstable; urgency=medium
 
   * Report a version and commit; an unstamped build left both fields empty

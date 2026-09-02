@@ -1,3 +1,14 @@
+typst (0.15.1-2) unstable; urgency=medium
+
+  * Build reproducibly: identical bytes across build path, hostname, locale,
+    timezone, umask, CPU count and file ordering.
+  * Record the Rust toolchain among the build dependencies, so the build
+    can be reproduced from its .buildinfo.
+  * Publish this version's source package and build record at
+    buildinfos.pkg.haus, so anyone can reproduce the build and check it.
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 02 Sep 2026 11:38:12 +0200
+
 typst (0.15.1-1) unstable; urgency=medium
 
   * Initial release for the pkg.haus archive
