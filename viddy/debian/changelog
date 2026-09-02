@@ -1,3 +1,11 @@
+viddy (1.3.1-4) unstable; urgency=medium
+
+  * Report the packaged version. Upstream's build script asks vergen for a git
+    describe string, which without a .git in the build tree fell back to its
+    placeholder and produced "1.3.1-VERGEN_IDEMPOTENT_OUTPUT".
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 02 Sep 2026 16:34:32 +0200
+
 viddy (1.3.1-3) unstable; urgency=medium
 
   * Pin the Rust toolchain to 1.98.0. Upstream's rust-toolchain.toml says

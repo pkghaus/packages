@@ -1,3 +1,11 @@
+vegeta (12.13.0-4) unstable; urgency=medium
+
+  * Report the upstream commit again. It was read with git rev-parse, which
+    returns nothing once the build tree carries no .git, so the field has been
+    empty; it now comes from the source package, where the build records it.
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 02 Sep 2026 16:34:32 +0200
+
 vegeta (12.13.0-3) unstable; urgency=medium
 
   * Publish this version's source package and build record at

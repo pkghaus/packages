@@ -13,7 +13,12 @@ export GOPATH := $(CURDIR)/.gopath
 # reports an empty Version and Commit. The commit comes from the upstream
 # clone the builder makes, and the date from the changelog, so a rebuild of
 # the same revision produces the same string.
-VEGETA_COMMIT := $(shell git rev-parse HEAD 2>/dev/null)
+# From the source package, not from git: the builder deletes the clone's .git
+# before building, so this ran against a tree with no repository and stamped an
+# empty commit from the day that landed. action-debian-build >= v1.6.0 writes
+# the revision it cloned to debian/upstream-commit, which ships in the .dsc, so
+# a rebuilder reads the same value and the binary stays reproducible.
+VEGETA_COMMIT := $(shell cat debian/upstream-commit 2>/dev/null)
 VEGETA_DATE := $(shell date -u -d @$(SOURCE_DATE_EPOCH) +%Y-%m-%dT%H:%M:%SZ%z)
 
 override_dh_auto_build:

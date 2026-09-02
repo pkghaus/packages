@@ -1,5 +1,7 @@
 #!/usr/bin/make -f
 
+include /usr/share/dpkg/pkg-info.mk
+
 # Rust's equivalent of Go's -trimpath. Without it the binary embeds the build
 # directory and a rebuild anywhere else produces different bytes: every Rust
 # package here failed reprotest's build_path variation and every Go one with
@@ -32,6 +34,22 @@ export CARGO_HOME := $(CURDIR)/.cargo
 # makes the build reproducible past the next Rust release rather than only until
 # it. 1.98.0 is the compiler the published -2 was built with.
 export RUSTUP_TOOLCHAIN := 1.98.0
+
+# Upstream's build.rs runs vergen, which reads the git tree for a describe
+# string and bakes it into `viddy --version` (utils.rs concatenates
+# CARGO_PKG_VERSION, VERGEN_GIT_DESCRIBE and VERGEN_BUILD_DATE). The builder
+# deletes the clone's .git before building, because a source package cannot
+# carry one and anything reading it makes our build differ from a rebuild of
+# our own .dsc -- so vergen fell back to its placeholder and shipped
+# "1.3.1-VERGEN_IDEMPOTENT_OUTPUT".
+#
+# vergen checks the environment before computing: add_default_map_entry does
+# `env::var(key.name())` and only then falls back (vergen 8.3.2 utils.rs, and
+# the gitoxide path does the same). At a release tag `git describe` prints the
+# tag, so this is the value upstream's own tagged build produces, and it comes
+# from the changelog rather than a git tree -- it ships in the .dsc and cannot
+# drift from the packaged version.
+export VERGEN_GIT_DESCRIBE := v$(DEB_VERSION_UPSTREAM)
 
 %:
 	dh $@

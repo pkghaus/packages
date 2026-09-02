@@ -1,3 +1,12 @@
+berry (0.1.13-4) unstable; urgency=high
+
+  * Report the packaged version. berry's configure takes it from git describe
+    when .git is present and otherwise from a hardcoded default that upstream last
+    updated at 0.1.7, so builds since the build tree stopped carrying a .git have
+    shipped a binary reporting 0.1.7 for a 0.1.13 package.
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 02 Sep 2026 16:34:32 +0200
+
 berry (0.1.13-3) unstable; urgency=medium
 
   * Build in the source tree. The build wrote objects to a shared directory
