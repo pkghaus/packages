@@ -19,6 +19,20 @@ export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
 # module-cache path.
 export CARGO_HOME := $(CURDIR)/.cargo
 
+# rustc is not a Debian package and so is not in .buildinfo's
+# Installed-Build-Depends; pinning it here puts the name in debian/rules, which
+# ships inside the source package, so a rebuild resolves the same compiler the
+# original did. Same reasoning as vale's GOTOOLCHAIN pin. Move it with each
+# upstream bump.
+#
+# Unlike the other Rust packages here, upstream ships a rust-toolchain.toml, and
+# it says `channel = "stable"` -- which resolves to whatever stable is on the day
+# and is therefore a record rather than a pin. RUSTUP_TOOLCHAIN beats the file
+# (rustup reports "environment override by RUSTUP_TOOLCHAIN"), so this is what
+# makes the build reproducible past the next Rust release rather than only until
+# it. 1.98.0 is the compiler the published -2 was built with.
+export RUSTUP_TOOLCHAIN := 1.98.0
+
 %:
 	dh $@
 

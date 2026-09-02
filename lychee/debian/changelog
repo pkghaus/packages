@@ -1,3 +1,13 @@
+lychee (0.24.2-3) unstable; urgency=medium
+
+  * Pin the Rust toolchain to 1.98.0. Upstream's rust-toolchain.toml says
+    channel = "stable", which records whichever compiler happened to be current on
+    the build date rather than pinning one, so the published source would stop
+    rebuilding to these bytes at the next Rust release. The binary is unchanged,
+    verified byte-identical to the previous revision.
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 02 Sep 2026 13:54:07 +0200
+
 lychee (0.24.2-2) unstable; urgency=medium
 
   * Declare the git build dependency. The build has always shelled out to git
