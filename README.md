@@ -173,6 +173,16 @@ and sid, no usable upstream `.deb`, no established third-party channel. Then a
 directory, a `package.conf`, a `debian/` tree including `debian/tests`, and a
 line in `packages.txt` once it builds and its tests pass.
 
+A package that needs a compiler newer than the suite ships declares the
+**bootstrap** as a build dependency and names the **exact version** in the
+source, so that both are visible to anyone rebuilding it: `golang-go` with the
+version in upstream's `go.mod`, or `rustup` with the version in upstream's
+`rust-toolchain.toml` or, where upstream declares none, an
+`export RUSTUP_TOOLCHAIN := <version>` in `debian/rules`. Debian's own `rustc`
+is not usable here -- trixie ships 1.85.0 against MSRVs up to 1.93.0 -- and
+`TOOLCHAIN=rust` in `package.conf` is not either, because a toolchain curled
+into `~/.cargo` appears in no `.buildinfo`.
+
 ## Licensing
 
 The Apache-2.0 licence at the root covers the packaging work in this

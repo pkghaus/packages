@@ -6,6 +6,14 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 %:
 	dh $@
 
+# Upstream's configure defaults --builddir to $TMPDIR/make, so objects compile
+# into /tmp/make/berry: outside the source tree, shared between builds, and
+# never cleaned if a build is interrupted. Two builds on one machine collide,
+# which is how reprotest found it, and a stale object from an earlier build
+# would be picked up silently.
+override_dh_auto_configure:
+	dh_auto_configure -- --builddir=$(CURDIR)/obj
+
 override_dh_usrlocal:
 
 override_dh_installexamples:

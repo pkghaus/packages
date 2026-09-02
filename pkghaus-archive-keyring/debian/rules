@@ -3,7 +3,14 @@
 %:
 	dh $@
 
+# gpg writes a keybox and a trustdb into $GNUPGHOME, defaulting to $HOME/.gnupg,
+# and the fingerprint check below is enough to make it do so. A build must not
+# depend on $HOME being writable: reprotest sets it to /nonexistent and the
+# build died with "gpg: Fatal: can't create directory". In-tree, and cleaned.
+export GNUPGHOME = $(CURDIR)/.gnupg
+
 override_dh_auto_build:
+	mkdir -p -m 0700 $(GNUPGHOME)
 	gpg --dearmor < keys/pkg.haus-archive.asc > pkghaus-archive-keyring.gpg
 	# The keyring must carry the archive's primary key; fail the build if
 	# the key material ever drifts from the expected fingerprint.
@@ -15,4 +22,4 @@ override_dh_auto_install:
 		debian/pkghaus-archive-keyring/usr/share/keyrings/pkghaus-archive-keyring.gpg
 
 override_dh_auto_clean:
-	rm -f pkghaus-archive-keyring.gpg
+	rm -rf pkghaus-archive-keyring.gpg $(GNUPGHOME)

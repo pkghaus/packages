@@ -5,6 +5,7 @@ Maintainer: pkg.haus archive <archive@pkg.haus>
 Build-Depends:
  debhelper-compat (= 13),
  libclang-dev,
+ rustup,
 Rules-Requires-Root: no
 Standards-Version: 4.7.2.0
 Homepage: https://github.com/ouch-org/ouch

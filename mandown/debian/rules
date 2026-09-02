@@ -1,7 +1,22 @@
 #!/usr/bin/make -f
 
+include /usr/share/dpkg/buildflags.mk
+
 %:
 	dh $@
+
+# Upstream's Makefile assigns CFLAGS and LDFLAGS outright rather than appending
+# to them, so a makefile assignment beats the environment and Debian's flags
+# were discarded wholesale: the package built with a plain -O3, without
+# hardening and without the -ffile-prefix-map that keeps the build directory
+# out of the object files.
+#
+# OPT is the knob both assignments interpolate (CFLAGS = $(OPT) ...,
+# LDFLAGS = $(OPT) ...), and a variable given on make's command line overrides
+# a makefile assignment, so this injects Debian's flags into both without
+# losing the pkg-config flags that the later CFLAGS += picks up.
+override_dh_auto_build:
+	dh_auto_build -- OPT="$(CFLAGS) $(CPPFLAGS)" LDFLAGS="$(LDFLAGS) $(CFLAGS)"
 
 # Upstream's make install hardcodes its prefix and ships the binary
 # setuid root; install it plainly and let dh_strip do the stripping.

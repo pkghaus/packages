@@ -1,5 +1,32 @@
 #!/usr/bin/make -f
 
+# Rust's equivalent of Go's -trimpath. Without it the binary embeds the build
+# directory and a rebuild anywhere else produces different bytes: every Rust
+# package here failed reprotest's build_path variation and every Go one with
+# -trimpath passed.
+#
+# RUSTFLAGS rather than Cargo's own `trim-paths` profile key, which is still
+# unstable: cargo 1.98 rejects it outright with "feature `trim-paths` is
+# required ... not stabilized in this version of Cargo".
+export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
+
+# And the registry with it. Cargo unpacks dependency sources under
+# CARGO_HOME, whose default is $HOME/.cargo, and rustc embeds those paths:
+# 940 of them in one zola binary. Vary $HOME and every one moves, which is
+# what reprotest does and why remapping CURDIR alone was not enough.
+# In-tree, so the remap above covers it -- the same shape as GOCACHE and
+# GOPATH in the Go packages here, which is why no Go binary carries a
+# module-cache path.
+export CARGO_HOME := $(CURDIR)/.cargo
+
+# rustup installs whatever stable is current on the day and this upstream ships
+# no rust-toolchain.toml, so nothing anywhere names the compiler that ran: the
+# .buildinfo records the Debian packages that were installed, and rustc is not
+# one of them. Pinning it here puts the name in debian/rules, which ships inside
+# the source package, so a rebuild resolves the same compiler the original did.
+# Same reasoning as vale's GOTOOLCHAIN pin. Move it with each upstream bump.
+export RUSTUP_TOOLCHAIN := 1.98.0
+
 # typst-cli's build script renders man pages and shell completions into
 # this directory when the variable is set.
 export GEN_ARTIFACTS := $(CURDIR)/artifacts
@@ -9,6 +36,7 @@ export GEN_ARTIFACTS := $(CURDIR)/artifacts
 
 override_dh_auto_clean:
 	cargo clean
+	rm -rf $(CURDIR)/.cargo
 	rm -rf artifacts
 
 override_dh_auto_build:

@@ -1,10 +1,50 @@
 #!/usr/bin/make -f
 
+# difftastic compiles its tree-sitter grammars from C through the cc crate, and
+# RUSTFLAGS does not reach a C compiler. Without Debian's CFLAGS exported, those
+# objects embed the build directory and the package stays path-dependent even
+# with the Rust side remapped. DPKG_EXPORT_BUILDFLAGS puts them in the
+# environment, which is where the cc crate looks.
+# build.rs compiles seven vendored tree-sitter grammars with
+# `parsers.par_iter().for_each(|p| p.build())`, and each cc::Build::compile()
+# prints its cargo:rustc-link-lib directive when it finishes. Under rayon the
+# finishing order follows thread scheduling, so the link order varies with the
+# number of CPUs, and with +whole-archive that reorders .text in the binary.
+#
+# Confirmed by bisection: reprotest passes with --vary=+all,-num_cpus and fails
+# with --vary=-all,+num_cpus, so the CPU count is the whole of it. One thread
+# makes par_iter run in index order. The seven grammars are a small part of a
+# build dominated by rustc, so serialising them costs little.
+export RAYON_NUM_THREADS = 1
+
+DPKG_EXPORT_BUILDFLAGS = 1
+include /usr/share/dpkg/buildflags.mk
+
+# Rust's equivalent of Go's -trimpath. Without it the binary embeds the build
+# directory and a rebuild anywhere else produces different bytes: every Rust
+# package here failed reprotest's build_path variation and every Go one with
+# -trimpath passed.
+#
+# RUSTFLAGS rather than Cargo's own `trim-paths` profile key, which is still
+# unstable: cargo 1.98 rejects it outright with "feature `trim-paths` is
+# required ... not stabilized in this version of Cargo".
+export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
+
+# And the registry with it. Cargo unpacks dependency sources under
+# CARGO_HOME, whose default is $HOME/.cargo, and rustc embeds those paths:
+# 940 of them in one zola binary. Vary $HOME and every one moves, which is
+# what reprotest does and why remapping CURDIR alone was not enough.
+# In-tree, so the remap above covers it -- the same shape as GOCACHE and
+# GOPATH in the Go packages here, which is why no Go binary carries a
+# module-cache path.
+export CARGO_HOME := $(CURDIR)/.cargo
+
 %:
 	dh $@
 
 override_dh_auto_clean:
 	cargo clean
+	rm -rf $(CURDIR)/.cargo
 
 override_dh_auto_build:
 	cargo build --release

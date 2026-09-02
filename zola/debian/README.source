@@ -1,0 +1,53 @@
+Building zola
+=============
+
+This package patches one of its own dependencies during the build. That is
+unusual enough to be worth stating outright, and Debian Policy 4.14 asks for it
+here rather than only in a rules comment.
+
+What is patched, and why
+------------------------
+
+minify-html-common 0.0.3's build script deserialises its HTML data into
+HashMaps and then emits generated Rust by iterating them, so `attrs.rs` and
+`entities.rs` come out in a different order on every build: Rust's RandomState
+reseeds per process. The difference propagates through minify_html into zola's
+own `site` crate, and it was the only reason this package did not reproduce
+byte-for-byte.
+
+crates.io has published nothing newer than 0.0.3 (2025-10-24), so there is no
+version to move to, and the crate is a build-time dependency rather than
+anything in the source tree, so a quilt patch cannot reach it.
+
+How
+---
+
+`debian/rules` sets CARGO_HOME inside the build tree, so every build extracts
+its own copy of the registry. `override_dh_auto_configure` then runs
+`cargo fetch`, which populates `registry/src/`, and rewrites the two
+declarations to BTreeMap with sed.
+
+All three edits are asserted afterwards. If upstream changes those lines the
+build fails loudly, rather than quietly going back to producing a package that
+cannot be verified.
+
+Nothing third-party is vendored into this repository. Vendoring the crate was
+the first approach and worked; it was rejected because 360 KB of upstream
+source would need re-checking on every zola bump.
+
+When to remove it
+-----------------
+
+When minify-html-common ships a release whose build script emits in a stable
+order. At that point drop `override_dh_auto_configure` and this file, and
+confirm two builds still produce the same .deb.
+
+Checking it still works
+-----------------------
+
+Two builds of the same source must produce an identical .deb:
+
+    docker run --rm -v "$PWD:/target" ghcr.io/pkghaus/deb-builder:unstable
+    sha256sum debs/zola_*.deb
+
+or, against a published record, `verify/rebuild.sh` in pkghaus/apt.

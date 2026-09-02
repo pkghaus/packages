@@ -6,6 +6,7 @@ Build-Depends:
  debhelper-compat (= 13),
  libssl-dev,
  pkgconf,
+ rustup,
 Rules-Requires-Root: no
 Standards-Version: 4.7.2.0
 Homepage: https://github.com/rapiz1/rathole

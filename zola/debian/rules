@@ -1,10 +1,69 @@
 #!/usr/bin/make -f
 
+# Rust's equivalent of Go's -trimpath. Without it the binary embeds the build
+# directory and a rebuild anywhere else produces different bytes: every Rust
+# package here failed reprotest's build_path variation and every Go one with
+# -trimpath passed.
+#
+# RUSTFLAGS rather than Cargo's own `trim-paths` profile key, which is still
+# unstable: cargo 1.98 rejects it outright with "feature `trim-paths` is
+# required ... not stabilized in this version of Cargo".
+export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
+
+# And the registry with it. Cargo unpacks dependency sources under
+# CARGO_HOME, whose default is $HOME/.cargo, and rustc embeds those paths:
+# 940 of them in one zola binary. Vary $HOME and every one moves, which is
+# what reprotest does and why remapping CURDIR alone was not enough.
+# In-tree, so the remap above covers it -- the same shape as GOCACHE and
+# GOPATH in the Go packages here, which is why no Go binary carries a
+# module-cache path.
+export CARGO_HOME := $(CURDIR)/.cargo
+
+# rustup installs whatever stable is current on the day and this upstream ships
+# no rust-toolchain.toml, so nothing anywhere names the compiler that ran: the
+# .buildinfo records the Debian packages that were installed, and rustc is not
+# one of them. Pinning it here puts the name in debian/rules, which ships inside
+# the source package, so a rebuild resolves the same compiler the original did.
+# Same reasoning as vale's GOTOOLCHAIN pin. Move it with each upstream bump.
+export RUSTUP_TOOLCHAIN := 1.98.0
+
 %:
 	dh $@
 
+# minify-html-common 0.0.3's build script deserialises its HTML data into
+# HashMaps and then emits generated Rust by iterating them, so attrs.rs and
+# entities.rs come out in a different order on every build: Rust's RandomState
+# reseeds per process. That propagates through minify_html into zola's own site
+# crate, and it is the only reason this package does not reproduce. Upstream
+# has published nothing newer than 0.0.3 (2025-10-24), so there is no version
+# to move to.
+#
+# Patched in this build's own registry rather than vendored: CARGO_HOME is
+# in-tree, so the copy is fresh every build and no third-party source is
+# carried in this repository. The edit is asserted afterwards -- if upstream
+# changes those declarations, this fails loudly rather than silently going back
+# to building an unreproducible package.
+override_dh_auto_configure:
+	dh_auto_configure
+	cargo fetch
+	set -e; \
+	b="$$(echo $(CARGO_HOME)/registry/src/*/minify-html-common-0.0.3/build.rs)"; \
+	test -f "$$b" || { echo "FATAL: minify-html-common 0.0.3 not in the registry" >&2; exit 1; }; \
+	sed -i \
+	    -e 's/^use std::collections::HashMap;$$/use std::collections::BTreeMap;\nuse std::collections::HashMap;/' \
+	    -e 's/attributes: HashMap<String, HashMap<HtmlDataNamespace, HashMap<String, HtmlDataAttrConfig>>>/attributes: BTreeMap<String, HashMap<HtmlDataNamespace, BTreeMap<String, HtmlDataAttrConfig>>>/' \
+	    -e 's/let entities: HashMap<String, Entity>/let entities: BTreeMap<String, Entity>/' \
+	    "$$b"; \
+	for want in "use std::collections::BTreeMap;" "attributes: BTreeMap<" "let entities: BTreeMap<"; do \
+	    grep -qF "$$want" "$$b" || { \
+	        echo "FATAL: minify-html-common build.rs no longer matches: $$want" >&2; \
+	        echo "       the determinism fix did not apply; re-check upstream" >&2; \
+	        exit 1; }; \
+	done
+
 override_dh_auto_clean:
 	cargo clean
+	rm -rf $(CURDIR)/.cargo
 
 override_dh_auto_build:
 	cargo build --release

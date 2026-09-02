@@ -2,7 +2,10 @@
 
 # Upstream vendors its Go dependencies, so the build is offline and needs
 # only the suite's compiler; no dh-golang machinery required.
-export GOFLAGS := -mod=vendor
+# -trimpath so the binary does not embed the build directory: without it a
+# rebuild anywhere else produces different bytes, which reprotest's build_path
+# variation catches and a fixed-path rebuild does not.
+export GOFLAGS := -mod=vendor -trimpath
 export GOCACHE := $(CURDIR)/.gocache
 
 %:

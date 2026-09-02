@@ -3,9 +3,8 @@ Section: web
 Priority: optional
 Maintainer: pkg.haus archive <archive@pkg.haus>
 Build-Depends:
- cargo:native,
  debhelper (>= 12),
- rustc:native,
+ rustup,
 Rules-Requires-Root: no
 Standards-Version: 4.7.2.0
 Homepage: https://github.com/getzola/zola
