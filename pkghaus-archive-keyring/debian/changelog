@@ -1,3 +1,17 @@
+pkghaus-archive-keyring (2026.09.02.1) unstable; urgency=medium
+
+  * Build from the key in this directory instead of cloning an archived
+    repository. keys/pkg.haus-archive.asc stayed behind in
+    pkghaus/archive-keyring when the packaging moved here, and that repository
+    was archived: read-only clones kept working so builds never failed, but the
+    key could no longer be changed and the documented rotation procedure could
+    not be carried out at all. The keyring itself is unchanged and the binary is
+    byte-identical to 2026.09.02; only where the key is kept has moved.
+  * Declare no upstream. A native package's source is its own directory, and
+    action-debian-build v1.5.0 refuses UPSTREAM and VERSION on one.
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 02 Sep 2026 15:19:57 +0200
+
 pkghaus-archive-keyring (2026.09.02) unstable; urgency=medium
 
   * Give gpg a home inside the build tree. It writes a keybox into GNUPGHOME,
