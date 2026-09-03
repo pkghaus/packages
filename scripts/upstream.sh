@@ -86,6 +86,36 @@ json_field() {
         sed -n "s/.*\"${1}\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n1
     fi
 }
+# Every tag the remote has, one per line.
+#
+# git rather than the API: ls-remote has no pagination, so this cannot miss a
+# newest tag that fell past page one. croc has 223 upstream tags against the
+# 100 `tags?per_page=100` returned, and the API documents no ordering, so the
+# old fallback sorted an arbitrary subset and took its maximum -- which can
+# only under-report, never over-report, and therefore showed up as a package
+# silently staying current rather than as an error.
+#
+# It also needs no token and does not consume the API rate limit, which one
+# full fleet run very nearly exhausts anonymously.
+#
+# GIT_TERMINAL_PROMPT=0 because ls-remote against a private or absent
+# repository asks for a username, and a prompt on a runner is a hung job
+# rather than a failed one.
+#
+# The awk drops `^{}` peel lines -- the dereferenced commits of annotated
+# tags, which would otherwise duplicate every annotated tag -- and strips the
+# prefix. One awk rather than grep piped to sed, because grep exits 1 when it
+# filters everything away, which turns a repository with no tags into a read
+# failure under pipefail.
+upstream_tags() {
+    local repo="$1" refs
+    refs="$(GIT_TERMINAL_PROMPT=0 git ls-remote --tags \
+        "https://github.com/$repo" 2>/dev/null)" || return 1
+
+    printf '%s\n' "$refs" | awk '
+        $2 !~ /\^\{\}$/ { sub(/^refs\/tags\//, "", $2); if ($2 != "") print $2 }'
+}
+
 # The newest upstream tag. releases/latest is authoritative where it
 # exists: it already excludes prereleases (lychee publishes a rolling
 # "nightly" that would otherwise win) and it follows a project's own
@@ -115,18 +145,18 @@ latest_tag() {
             ;;
     esac
 
-    body="$(api "repos/$repo/tags?per_page=100")" && rc=0 || rc=$?
-    if [ "$rc" -ne 0 ]; then
+    local tags
+    tags="$(upstream_tags "$repo")" || {
         printf 'upstream: cannot read the tag list for %s\n' "$repo" >&2
         return 1
-    fi
-    if [ -n "$body" ]; then
-        if command -v jq >/dev/null 2>&1; then
-            tag="$(printf '%s' "$body" | jq -r '.[].name' | sort -V | tail -n1)"
-        else
-            tag="$(printf '%s' "$body" | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | sort -V | tail -n1)"
-        fi
-        [ -n "$tag" ] && { printf '%s\n' "$tag"; return 0; }
+    }
+
+    # Empty is not a read failure: a project with neither releases nor tags is
+    # unresolvable, and saying so is different from saying the read broke.
+    tag="$(printf '%s\n' "$tags" | sort -V | tail -n1)"
+    if [ -n "$tag" ]; then
+        printf '%s\n' "$tag"
+        return 0
     fi
     return 1
 }
