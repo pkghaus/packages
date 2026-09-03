@@ -63,6 +63,27 @@ echo "upstream bump"
     eq "the previous entry survives intact" \
        "demo (1.0.0-1) unstable; urgency=medium" "$(sed -n '7p' "$work/a/debian/changelog")"
 
+    # dpkg-source preserves an mtime older than SOURCE_DATE_EPOCH and clamps a
+    # newer one down to it, so a file predating the changelog entry keeps its own
+    # checkout mtime and that leg's source package stops matching the others'.
+    # action-debian-build refuses the build for exactly that.
+    #
+    # The bump used to leave the tree in that state whenever `date -R` crossed a
+    # second boundary after the checkout: the entry truncates to whole seconds,
+    # so landing in the same second left the files newer and landing in the next
+    # left every one of them older. About one run in sixty, which is how it
+    # reached production and took one leg of vale's three on 2026-09-03 while
+    # the other two, stamped a second earlier, passed.
+    make_pkg "$work/mt" mt 1.0.0 "3.0 (quilt)"
+    find "$work/mt" -exec touch {} +
+    ( bump "$work/mt" v1.1.0 >/dev/null 2>&1 )
+    mt_epoch="$(cd "$work/mt" && dpkg-parsechangelog -l debian/changelog -S Timestamp)"
+    eq "no file under debian/ predates the entry the bump just wrote" \
+       "0" "$(cd "$work/mt" && find debian ! -newermt "@$mt_epoch" -print | wc -l)"
+    # One value, so every leg's dpkg-source clamps to the same thing.
+    eq "the bump leaves a single mtime across the package" \
+       "1" "$(find "$work/mt" -printf '%T@\n' | sort -u | wc -l)"
+
     # bump.yml parses this line to fill the PR title and the tag command in
     # its body. The shape is a contract, not just a log message.
     make_pkg "$work/e" fmt 1.0.0 "3.0 (quilt)"

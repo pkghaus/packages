@@ -108,6 +108,29 @@ bump() {
     } > "$dir/debian/changelog.new"
     mv "$dir/debian/changelog.new" "$dir/debian/changelog"
 
+    # Make the tree consistent with the timestamp just written into it.
+    #
+    # dpkg-source clamps an mtime NEWER than SOURCE_DATE_EPOCH down to it and
+    # PRESERVES an older one, so a file older than the changelog entry keeps its
+    # own checkout mtime and that leg's source package stops matching the
+    # others'. action-debian-build refuses the build for exactly that.
+    #
+    # A bump is where it becomes a coin flip. The checkout gives every file a
+    # sub-second mtime, say 04:21:32.4, and `date -R` truncates the entry to
+    # whole seconds. Land in the same second and the epoch is 04:21:32.0: the
+    # files are newer, dpkg-source clamps them all to one value, the build
+    # passes. Cross into the next second and the epoch is 04:21:33.0, every file
+    # predates it, and the build fails. Measured at about one run in sixty, and
+    # on 2026-09-03 it took one leg of vale's three while the other two, stamped
+    # one second earlier, passed (run 33714720341).
+    #
+    # Explicitly epoch+1 rather than "now": "now" is only *probably* later than
+    # an epoch truncated downwards, which is the same coin flip one notch
+    # smaller. Everything then clamps to the epoch and every leg agrees.
+    local stamp
+    stamp="$(cd "$dir" && dpkg-parsechangelog -l debian/changelog -S Timestamp)"
+    find "$dir" -exec touch -d "@$((stamp + 1))" {} +
+
     printf '%s %s -> %s\n' "$source" "$current" "$new_version"
 }
 
