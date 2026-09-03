@@ -202,6 +202,20 @@ FAKE
     chmod +x "$bin/gh"
     export ASKED="$log"
 
+    cat > "$bin/git" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "ls-remote $*" >> "$ASKED"
+case "$1" in
+  ls-remote)
+      [ "${GIT_FAIL:-0}" = 1 ] && { echo 'fatal: repository not found' >&2; exit 128; }
+      printf '%s' "$GIT_REFS"
+      exit 0 ;;
+esac
+exec /usr/bin/git "$@"
+FAKE
+    chmod +x "$bin/git"
+    export GIT_REFS GIT_FAIL
+
     # shellcheck source=scripts/upstream.sh
     . "$ROOT/scripts/upstream.sh"
 
@@ -227,25 +241,70 @@ FAKE
     eq "a released project resolves from releases/latest" "v3.2.1" "$(latest_tag x/y)"
 
     # No releases: falling back to the tag list is correct and permanent.
+    # The list comes from ls-remote, not the API, so the fixture is refs.
     : > "$log"
     GH_404_PATH="releases/latest" GH_FAIL_PATH="__none__"
-    GH_BODY='[{"name":"v0.8.2"},{"name":"v0.9.0"},{"name":"v0.8.10"}]'
+    GIT_FAIL=0
+    GIT_REFS="$(printf 'a\trefs/tags/v0.8.2\nb\trefs/tags/v0.9.0\nc\trefs/tags/v0.8.10\n')"
     eq "a project with no releases resolves from the tag list" "v0.9.0" "$(latest_tag x/y)"
-    eq "  and the tag list WAS consulted" "1" "$(grep -c 'tags' "$log")"
+    eq "  and the tag list WAS consulted" "1" "$(grep -c 'ls-remote' "$log")"
 
     # THE POINT: unreachable must not be answered from the tag list.
     : > "$log"
     GH_404_PATH="__none__" GH_FAIL_PATH="releases/latest"
-    GH_BODY='[{"name":"v0.0.1"}]'
+    GIT_FAIL=0 GIT_REFS="$(printf 'a\trefs/tags/v0.0.1\n')"
     out="$(latest_tag x/y 2>/dev/null)" && rc=0 || rc=$?
     eq "an unreachable releases endpoint fails" "1" "$rc"
     eq "  and answers nothing" "" "$out"
-    eq "  and never consults the tag list" "0" "$(grep -c 'tags' "$log")"
+    eq "  and never consults the tag list" "0" "$(grep -c 'ls-remote' "$log")"
 
-    # A tag list that cannot be read is also a refusal, not an empty fleet.
-    GH_404_PATH="releases/latest" GH_FAIL_PATH="tags"
-    out="$(latest_tag x/y 2>/dev/null)" && rc=0 || rc=$?
-    eq "an unreadable tag list fails too" "1" "$rc"
+    # --- the tag list comes from ls-remote, so it cannot be truncated -----
+    # A git that answers ls-remote from a fixture. The API fallback it replaced
+    # took one 100-item page of an endpoint that documents no ordering.
+    GH_404_PATH="releases/latest" GH_FAIL_PATH="__none__"
+
+    # 120 tags, and the newest is the LAST line -- the position a 100-item
+    # first page would have cut off. This is the assertion the old fallback
+    # could not pass.
+    # Built with seq/awk, not a shell loop appending $(printf ...): command
+    # substitution strips trailing newlines, so that concatenates all 120 refs
+    # onto ONE line and awk sees a single unparseable record.
+    refs="$(seq 1 119 | awk '{print "aaaa\trefs/tags/v1.0." $1}'
+            printf 'bbbb\trefs/tags/v9.9.9\n')"
+    GIT_FAIL=0 GIT_REFS="$refs"
+    eq "the fixture really has 120 lines" "120" "$(printf '%s\n' "$refs" | wc -l)"
+    eq "the newest tag is found past the old 100-item page" "v9.9.9" "$(latest_tag x/y)"
+
+    # Peel lines are the dereferenced commits of annotated tags. Left in they
+    # duplicate every annotated tag, and `v2.0.0^{}` sorts above `v2.0.0`.
+    GIT_REFS="$(printf 'aaaa\trefs/tags/v1.0.0\nbbbb\trefs/tags/v2.0.0\ncccc\trefs/tags/v2.0.0^{}\n')"
+    eq "a peel line is not mistaken for a tag" "v2.0.0" "$(latest_tag x/y)"
+
+    # Version ordering, not lexicographic: v0.10.0 is newer than v0.9.0.
+    GIT_REFS="$(printf 'aaaa\trefs/tags/v0.9.0\nbbbb\trefs/tags/v0.10.0\n')"
+    eq "tags sort by version, not as text" "v0.10.0" "$(latest_tag x/y)"
+
+    # A read failure is a refusal, and it says so.
+    : > "$log"
+    GIT_FAIL=1
+    err="$(latest_tag x/y 2>&1 >/dev/null)" && rc=0 || rc=$?
+    eq "an unreadable tag list fails" "1" "$rc"
+    eq "  and names the cause" "1" "$(printf '%s' "$err" | grep -c 'cannot read the tag list')"
+
+    # No tags at all is unresolvable, but NOT a read failure -- different
+    # states, and conflating them is the bug this file keeps being about.
+    GIT_FAIL=0 GIT_REFS=""
+    err="$(latest_tag x/y 2>&1 >/dev/null)" && rc=0 || rc=$?
+    eq "a project with no tags is unresolvable" "1" "$rc"
+    eq "  and is not reported as a read failure" "0" \
+       "$(printf '%s' "$err" | grep -c 'cannot read')"
+
+    # And the API is not consulted for tags any more.
+    : > "$log"
+    GIT_FAIL=0 GIT_REFS="$(printf 'aaaa\trefs/tags/v1.0.0\n')"
+    latest_tag x/y >/dev/null
+    eq "the tags API is no longer called" "0" "$(grep -c 'tags?per_page' "$log")"
+    eq "  and ls-remote is" "1" "$(grep -c 'ls-remote' "$log")"
 
     # --- and the curl path ------------------------------------------------
     # PATH is narrowed to the stub directory alone, not merely emptied of the
