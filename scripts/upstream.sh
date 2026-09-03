@@ -12,19 +12,71 @@
 # gh first (it carries its own auth), then a token from the environment,
 # then anonymous. Anonymous works but shares a 60-requests-per-hour pool,
 # which one full run very nearly exhausts.
+#
+# Three outcomes, not two, and keeping them apart is the point:
+#
+#   0   the body is on stdout
+#   3   the resource is genuinely absent (HTTP 404)
+#   1   could not ask -- network, auth, rate limit, 5xx
+#
+# Collapsing 3 and 1 into "no answer" is how a blip becomes a claim about
+# upstream. latest_tag below falls back to the tag list on 3, because a project
+# with no releases is a real and permanent state; on 1 it must refuse, because
+# the tag list cannot be trusted to answer a question the releases endpoint was
+# never asked.
+#
+# gh writes its error JSON to STDOUT and the message to stderr, then exits
+# non-zero. Captured 2026-09-03 against a repo with no releases:
+#
+#   $ gh api repos/pb-/gotypist/releases/latest
+#   {"message":"Not Found",...,"status":"404"}      <- stdout
+#   gh: Not Found (HTTP 404)                        <- stderr, exit 1
+#
+# So the body is held and only printed on success. Passing gh's output straight
+# through hands the caller an error document, and every `[ -n "$body" ]` check
+# reads that as a result -- which is exactly how a survey of this fleet
+# concluded that gotypist publishes releases.
+#
+# Note gh cannot tell "no releases" from "no such repository": both are 404
+# with that identical message. Absent is absent; nothing here needs to care.
 api() {
-    local path="$1"
+    local path="$1" body errfile rc status
+    local -a auth=()
+
     if command -v gh >/dev/null 2>&1; then
-        gh api "$path" 2>/dev/null
-    elif [ -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
-        curl -fsS --connect-timeout 10 --max-time 30 \
-            -H "Authorization: Bearer ${GH_TOKEN:-$GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github+json" "$API_BASE/$path" 2>/dev/null
-    else
-        curl -fsS --connect-timeout 10 --max-time 30 \
-            -H "Accept: application/vnd.github+json" \
-            "$API_BASE/$path" 2>/dev/null
+        errfile="$(mktemp)"
+        if body="$(gh api "$path" 2>"$errfile")"; then
+            rm -f "$errfile"
+            printf '%s' "$body"
+            return 0
+        fi
+        rc=1
+        if grep -q '(HTTP 404)' "$errfile"; then
+            rc=3
+        fi
+        rm -f "$errfile"
+        return "$rc"
     fi
+
+    # An `if` rather than `[ ... ] && auth=(...)`: as a bare && list whose test
+    # fails, that statement returns 1 and takes the whole run down under set -e.
+    if [ -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
+        auth=(-H "Authorization: Bearer ${GH_TOKEN:-$GITHUB_TOKEN}")
+    fi
+
+    # No -f here on purpose: the status IS the answer, and -f discards it along
+    # with the body. -w appends it, so one call yields both.
+    body="$(curl -sS --connect-timeout 10 --max-time 30 \
+        "${auth[@]}" -H "Accept: application/vnd.github+json" \
+        -w '\n%{http_code}' "$API_BASE/$path" 2>/dev/null)" || return 1
+
+    status="${body##*$'\n'}"
+    body="${body%$'\n'*}"
+    case "$status" in
+        2??) printf '%s' "$body"; return 0 ;;
+        404) return 3 ;;
+        *)   return 1 ;;
+    esac
 }
 # One field out of a JSON body, without requiring jq to be installed.
 json_field() {
@@ -42,15 +94,33 @@ json_field() {
 # fall back to the tag list, sorted properly rather than trusting the
 # API's unspecified ordering.
 latest_tag() {
-    local repo="$1" body tag
-    if body="$(api "repos/$repo/releases/latest")" && [ -n "$body" ]; then
-        tag="$(printf '%s' "$body" | json_field tag_name '.tag_name')"
-        if [ -n "$tag" ]; then
-            printf '%s\n' "$tag"
-            return 0
-        fi
+    local repo="$1" body tag rc
+
+    body="$(api "repos/$repo/releases/latest")" && rc=0 || rc=$?
+    case "$rc" in
+        0)
+            tag="$(printf '%s' "$body" | json_field tag_name '.tag_name')"
+            if [ -n "$tag" ]; then
+                printf '%s\n' "$tag"
+                return 0
+            fi
+            ;;
+        3) ;;  # No releases published. Permanent, so the tag list is correct.
+        *)
+            # Could not ask. Refusing here is the whole point: the tag list
+            # answers a different question, and one package in this fleet has
+            # 223 upstream tags against a 100-per-page fallback.
+            printf 'upstream: cannot reach releases/latest for %s\n' "$repo" >&2
+            return 1
+            ;;
+    esac
+
+    body="$(api "repos/$repo/tags?per_page=100")" && rc=0 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        printf 'upstream: cannot read the tag list for %s\n' "$repo" >&2
+        return 1
     fi
-    if body="$(api "repos/$repo/tags?per_page=100")" && [ -n "$body" ]; then
+    if [ -n "$body" ]; then
         if command -v jq >/dev/null 2>&1; then
             tag="$(printf '%s' "$body" | jq -r '.[].name' | sort -V | tail -n1)"
         else

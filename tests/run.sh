@@ -172,6 +172,119 @@ echo "bump plan"
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 
+echo "upstream lookup: absent and unreachable are different answers"
+(
+    # api() and the real latest_tag had no coverage at all: the plan tests
+    # override latest_tag wholesale. These drive both through stubbed CLIs, so
+    # they are offline and deterministic.
+    bin="$(mktemp -d)"; log="$bin/asked"; : > "$log"
+    export PATH="$bin:$PATH" API_BASE="http://127.0.0.1:1"
+    unset GH_TOKEN GITHUB_TOKEN
+
+    # A gh that logs what it was asked and answers per-path. Reproduces the
+    # shape captured from the real one: the error JSON on STDOUT, the message
+    # on stderr, non-zero exit.
+    cat > "$bin/gh" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "$*" >> "$ASKED"
+case "$*" in
+  *"$GH_404_PATH"*)
+      printf '{"message":"Not Found","status":"404"}'
+      echo 'gh: Not Found (HTTP 404)' >&2
+      exit 1 ;;
+  *"$GH_FAIL_PATH"*)
+      printf '{"message":"Server Error"}'
+      echo 'gh: Internal Server Error (HTTP 502)' >&2
+      exit 1 ;;
+esac
+printf '%s' "$GH_BODY"
+FAKE
+    chmod +x "$bin/gh"
+    export ASKED="$log"
+
+    # shellcheck source=scripts/upstream.sh
+    . "$ROOT/scripts/upstream.sh"
+
+    # --- api() tells the three outcomes apart -----------------------------
+    GH_404_PATH="releases/latest" GH_FAIL_PATH="__none__" GH_BODY=''
+    export GH_404_PATH GH_FAIL_PATH GH_BODY
+    out="$(api "repos/x/y/releases/latest")" && rc=0 || rc=$?
+    eq "a 404 is exit 3, not a generic failure" "3" "$rc"
+    eq "and the error document is NOT passed off as a body" "" "$out"
+
+    GH_404_PATH="__none__" GH_FAIL_PATH="releases/latest"
+    out="$(api "repos/x/y/releases/latest")" && rc=0 || rc=$?
+    eq "a 502 is exit 1, distinct from absent" "1" "$rc"
+    eq "and it leaks no body either" "" "$out"
+
+    GH_404_PATH="__none__" GH_FAIL_PATH="__none__" GH_BODY='{"tag_name":"v3.2.1"}'
+    out="$(api "repos/x/y/releases/latest")" && rc=0 || rc=$?
+    eq "a success is exit 0 with the body" "0" "$rc"
+    eq "  and the body is the response" '{"tag_name":"v3.2.1"}' "$out"
+
+    # --- latest_tag acts on the distinction -------------------------------
+    GH_404_PATH="__none__" GH_FAIL_PATH="__none__" GH_BODY='{"tag_name":"v3.2.1"}'
+    eq "a released project resolves from releases/latest" "v3.2.1" "$(latest_tag x/y)"
+
+    # No releases: falling back to the tag list is correct and permanent.
+    : > "$log"
+    GH_404_PATH="releases/latest" GH_FAIL_PATH="__none__"
+    GH_BODY='[{"name":"v0.8.2"},{"name":"v0.9.0"},{"name":"v0.8.10"}]'
+    eq "a project with no releases resolves from the tag list" "v0.9.0" "$(latest_tag x/y)"
+    eq "  and the tag list WAS consulted" "1" "$(grep -c 'tags' "$log")"
+
+    # THE POINT: unreachable must not be answered from the tag list.
+    : > "$log"
+    GH_404_PATH="__none__" GH_FAIL_PATH="releases/latest"
+    GH_BODY='[{"name":"v0.0.1"}]'
+    out="$(latest_tag x/y 2>/dev/null)" && rc=0 || rc=$?
+    eq "an unreachable releases endpoint fails" "1" "$rc"
+    eq "  and answers nothing" "" "$out"
+    eq "  and never consults the tag list" "0" "$(grep -c 'tags' "$log")"
+
+    # A tag list that cannot be read is also a refusal, not an empty fleet.
+    GH_404_PATH="releases/latest" GH_FAIL_PATH="tags"
+    out="$(latest_tag x/y 2>/dev/null)" && rc=0 || rc=$?
+    eq "an unreadable tag list fails too" "1" "$rc"
+
+    # --- and the curl path ------------------------------------------------
+    # PATH is narrowed to the stub directory alone, not merely emptied of the
+    # gh stub: `command -v gh` finds the REAL gh in /usr/bin otherwise, and the
+    # curl branch is never reached. The first version of these assertions
+    # passed against live GitHub 404s without touching the code under test.
+    #
+    # The curl branch needs only builtins plus curl, so a one-entry PATH is
+    # enough.
+    rm -f "$bin/gh"
+    cat > "$bin/curl" <<'FAKE'
+#!/bin/sh
+# Mimics -w '\n%{http_code}': body, newline, status.
+printf '%s\n%s' "$CURL_BODY" "$CURL_CODE"
+FAKE
+    chmod +x "$bin/curl"
+    export CURL_BODY CURL_CODE
+
+    eq "the real gh is out of reach for these" "" \
+       "$(PATH="$bin" command -v gh || true)"
+
+    CURL_BODY='{"message":"Not Found"}' CURL_CODE=404
+    out="$(PATH="$bin" api "repos/x/y/releases/latest")" && rc=0 || rc=$?
+    eq "curl path: 404 is exit 3" "3" "$rc"
+    eq "curl path: no body on a 404" "" "$out"
+
+    CURL_BODY='{"message":"boom"}' CURL_CODE=500
+    out="$(PATH="$bin" api "repos/x/y/releases/latest")" && rc=0 || rc=$?
+    eq "curl path: 500 is exit 1" "1" "$rc"
+
+    CURL_BODY='{"tag_name":"v1.2.3"}' CURL_CODE=200
+    out="$(PATH="$bin" api "repos/x/y/releases/latest")" && rc=0 || rc=$?
+    eq "curl path: 200 is exit 0" "0" "$rc"
+    eq "curl path: the body survives the status split" '{"tag_name":"v1.2.3"}' "$out"
+
+    rm -rf "$bin"
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
 echo "release in flight"
 (
     inflight="$ROOT/scripts/release-in-flight.sh"
