@@ -342,6 +342,28 @@ echo "release plan"
     eq "and names the package that cannot be tagged" "1" \
        "$(printf '%s' "$out" | grep -c 'epoch 1:2.3-1 cannot be a tag name')"
 
+    # Cases the hand-written character class accepted and git refuses. Absurd
+    # for a Debian version, which is the point: the check is git's rule now,
+    # not a list of the absurd cases somebody thought of.
+    for bad in 1.0.lock 1.0.; do
+        mk reflock "$bad"
+        out="$(printf 'reflock/debian/changelog\n' | plan 2>&1)"; rc=$?
+        eq "a version ending '$bad' is refused, not tagged" "1" "$rc"
+        eq "  and it says why" "1" \
+           "$(printf '%s' "$out" | grep -c "reflock $bad cannot be a tag name")"
+    done
+
+    # And the legitimate shapes still pass, or the fix would be a regression.
+    # 1.0.LOCK is here deliberately: git's .lock rule is case-sensitive, so it
+    # accepts that one, and asserting otherwise would encode a guess about
+    # git's rule rather than the rule.
+    for good in 1.0-1 2.13.c.5 1.0-1+b1 2026.09.02.1 1.0.LOCK; do
+        mk refok "$good"
+        out="$(printf 'refok/debian/changelog\n' | plan 2>&1)"
+        eq "a legitimate version still plans: $good" "1" \
+           "$(printf '%s' "$out" | grep -c "refok/v$good")"
+    done
+
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 

@@ -17,10 +17,12 @@ api() {
     if command -v gh >/dev/null 2>&1; then
         gh api "$path" 2>/dev/null
     elif [ -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
-        curl -fsS -H "Authorization: Bearer ${GH_TOKEN:-$GITHUB_TOKEN}" \
+        curl -fsS --connect-timeout 10 --max-time 30 \
+            -H "Authorization: Bearer ${GH_TOKEN:-$GITHUB_TOKEN}" \
             -H "Accept: application/vnd.github+json" "$API_BASE/$path" 2>/dev/null
     else
-        curl -fsS -H "Accept: application/vnd.github+json" \
+        curl -fsS --connect-timeout 10 --max-time 30 \
+            -H "Accept: application/vnd.github+json" \
             "$API_BASE/$path" 2>/dev/null
     fi
 }
