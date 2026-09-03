@@ -33,21 +33,34 @@ active() { # <repo> <workflow-or-empty>
     # Declared separately: bash does not expand an earlier assignment in the
     # same `local` when the later one is an array.
     local args
+    local out
     args=(run list --repo "$repo" --limit 20 --json status)
     [ -z "$wf" ] || args+=(--workflow "$wf")
     # A non-numeric sentinel on failure, never 0: a zero here would mean
     # "nothing is running", which is the direction that files a false
     # accusation. The caller treats anything non-numeric as in flight.
-    gh "${args[@]}" --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || printf 'unknown'
+    #
+    # Empty counts as failure too. `|| printf unknown` covers a non-zero exit
+    # but not a zero exit with no output, and an empty answer reached the
+    # caller's numeric test as "", which is neither caught by its non-numeric
+    # guard nor usable as a number.
+    out="$(gh "${args[@]}" --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null)" || out=""
+    printf '%s' "${out:-unknown}"
 }
 
 # An API failure must not read as "nothing is running": that is the direction
 # that files a false accusation. Unreachable counts as in flight.
 r="$(active "$PACKAGES_REPO" release.yml)"
 a="$(active "$ARCHIVE_REPO" '')"
-case "$r$a" in
-    *[!0-9]*) printf 'yes\n'; exit 0 ;;
-esac
+# Each answer on its own. Concatenating them let a numeric one mask an empty
+# one -- "" and "3" join to "3", which passes a non-numeric guard and then
+# fails the arithmetic below as "". Empty is matched explicitly: it is not a
+# non-digit character, so *[!0-9]* never caught it.
+for answer in "$r" "$a"; do
+    case "$answer" in
+        '' | *[!0-9]*) printf 'yes\n'; exit 0 ;;
+    esac
+done
 
 if [ "$r" -gt 0 ] || [ "$a" -gt 0 ]; then
     printf 'yes\n'
