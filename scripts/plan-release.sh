@@ -54,14 +54,20 @@ plan() {
         version="$(changelog_version "$pkg")"
         [ -n "$version" ] || die "cannot parse $pkg/debian/changelog"
 
-        # An epoch's colon and a tilde are both illegal in a ref name. Loud
-        # rather than skipped: a package that silently stops releasing looks
-        # exactly like a package with nothing to release.
-        case "$version" in
-            *[:~^\ ]*|*..*) die "$pkg $version cannot be a tag name" ;;
-        esac
-
         tag="$pkg/v$version"
+
+        # Asked of git rather than enumerated here. An epoch's colon and a
+        # tilde are the cases that actually turn up, but the full rule is
+        # git's, and a hand-written character class kept missing parts of it:
+        # `*[:~^ ]*|*..*` accepted a version ending in `.lock` or in a bare
+        # dot, both of which git refuses. Absurd for a Debian version, and
+        # that is the point -- the check should not depend on which absurd
+        # cases were thought of.
+        #
+        # Loud rather than skipped: a package that silently stops releasing
+        # looks exactly like a package with nothing to release.
+        git check-ref-format "refs/tags/$tag" 2>/dev/null \
+            || die "$pkg $version cannot be a tag name"
         if tag_exists "$tag"; then
             printf 'SKIP %s: %s already exists\n' "$pkg" "$tag" >&2
             continue
