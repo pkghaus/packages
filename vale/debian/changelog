@@ -1,3 +1,9 @@
+vale (3.20.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Thu, 03 Sep 2026 05:13:44 +0000
+
 vale (3.19.0-2) unstable; urgency=medium
 
   * Publish this version's source package and build record at
