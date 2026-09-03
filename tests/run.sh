@@ -184,6 +184,33 @@ echo "release in flight"
     eq "an unreachable archive repo counts as in flight" "yes" \
        "$(ARCHIVE_REPO=pkghaus/does-not-exist-xyz "$inflight")"
 
+    # A gh that succeeds and says nothing. Distinct from the failures above:
+    # `|| printf unknown` never fires, so an empty answer used to reach the
+    # numeric test as "" and fall through to "no" -- the false-accusation
+    # direction this whole script exists to avoid.
+    stub="$(mktemp -d)"
+    printf '#!/bin/sh\nexit 0\n' > "$stub/gh"
+    chmod +x "$stub/gh"
+    eq "a gh that exits 0 with no output counts as in flight" "yes" \
+       "$(PATH="$stub:$PATH" "$inflight")"
+
+    # And the same emptiness on one repo only, where a numeric answer from the
+    # other used to mask it through string concatenation.
+    printf '%s\n' '#!/bin/sh' \
+        'case "$*" in *does-not-exist-xyz*) exit 0 ;; esac' \
+        'printf 0' > "$stub/gh"
+    chmod +x "$stub/gh"
+    eq "one empty answer beside a numeric one still counts as in flight" "yes" \
+       "$(PATH="$stub:$PATH" ARCHIVE_REPO=pkghaus/does-not-exist-xyz "$inflight")"
+
+    # The negative control: both answers real and zero means idle, so the
+    # guards above cannot be passing by refusing everything.
+    printf '#!/bin/sh\nprintf 0\n' > "$stub/gh"
+    chmod +x "$stub/gh"
+    eq "two zero answers read as idle" "no" \
+       "$(PATH="$stub:$PATH" "$inflight")"
+
+    rm -rf "$stub"
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 
