@@ -36,6 +36,14 @@ on:
         description: Package to release at master's current changelog version
         required: true
         type: string
+      skip_build:
+        description: >-
+          Skip the build gate because the caller already built this exact tree
+          across every suite and architecture. Honoured only when the bot is
+          the actor, so a person dispatching by hand always gets the gate.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -51,6 +59,7 @@ jobs:
   plan:
     name: Decide what to release
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       has_work: ${{ steps.plan.outputs.has_work }}
@@ -74,13 +83,9 @@ jobs:
         env:
           BEFORE: ${{ github.event.before }}
           SHA: ${{ github.sha }}
-        run: |
-          before="$BEFORE"
-          case "$before" in
-              ''|0000000000000000000000000000000000000000)
-                  before="$(git rev-parse "$SHA^")" ;;
-          esac
-          scripts/check-keyring-author.sh "$before" "$SHA"
+        # The all-zeros and empty forms of github.event.before are handled
+        # inside the script, where a test can reach them.
+        run: scripts/check-keyring-author.sh "$BEFORE" "$SHA"
 
       - name: Resolve the release set
         id: plan
@@ -107,12 +112,8 @@ jobs:
                   exit 1
               }
               matrix="$(printf '%s\n' "$PACKAGE/debian/changelog" | scripts/plan-release.sh)"
-              count="$(printf '%s' "$matrix" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
-              has_work=false
-              [ "$count" -gt 0 ] && has_work=true
-              printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
-              printf 'has_work=%s\n' "$has_work" >> "$GITHUB_OUTPUT"
-              if [ "$count" -eq 0 ]; then
+              scripts/plan-output.sh "$matrix" >> "$GITHUB_OUTPUT"
+              if [ "$matrix" = "[]" ]; then
                   printf '%s is already tagged at its changelog version.\n' "$PACKAGE" \
                       >> "$GITHUB_STEP_SUMMARY"
               else
@@ -138,18 +139,31 @@ jobs:
           }
 
           matrix="$(printf '%s\n' "$changed" | scripts/plan-release.sh)"
-          count="$(printf '%s' "$matrix" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
-          has_work=false
-          [ "$count" -gt 0 ] && has_work=true
-
-          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
-          printf 'has_work=%s\n' "$has_work" >> "$GITHUB_OUTPUT"
-          printf 'releasing %s package(s): %s\n' "$count" "$matrix" >> "$GITHUB_STEP_SUMMARY"
+          scripts/plan-output.sh "$matrix" >> "$GITHUB_OUTPUT"
+          printf 'releasing: %s\n' "$matrix" >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: ${{ matrix.entry.package }} ${{ matrix.entry.version }}
     needs: plan
-    if: needs.plan.outputs.has_work == 'true'
+    # The gate on every path except one: a bump that bump.yml already built
+    # across all three suites and both architectures, on the byte-identical
+    # tree its land step then committed. Rebuilding it here was a third of the
+    # pipeline's wall clock and proved nothing.
+    #
+    # Three conditions, because the input alone would be a way to tag something
+    # unbuilt: the event has to be a dispatch, the flag has to be set, and the
+    # actor has to be the bot. A person dispatching by hand always gets the
+    # gate, whatever they pass.
+    #
+    # If this is ever wrong in the permissive direction the archive does not
+    # suffer for it: the ingest builds every package from source itself, so an
+    # unbuildable tag fails there, publishes nothing, and shows up in the
+    # dashboard's "packaged but not published" table.
+    if: >-
+      needs.plan.outputs.has_work == 'true'
+      && !(github.event_name == 'workflow_dispatch'
+           && inputs.skip_build
+           && github.actor == 'github-actions[bot]')
     strategy:
       fail-fast: false
       matrix:
@@ -161,10 +175,28 @@ jobs:
 
   release:
     name: release ${{ matrix.entry.package }}
-    # Skipped by default if build failed, which is the whole gate: no tag and no
-    # dispatch for a package that did not build. A re-run then re-plans, finds
-    # no tag, and builds again.
     needs: [plan, build]
+    # Spelled out rather than left to the default, because build is now
+    # legitimately skipped on the bump path and a skipped dependency would take
+    # this with it.
+    #
+    # plan.result is checked explicitly, and that is not belt-and-braces:
+    # !cancelled() overrides the default skip-on-failed-dependency, so a plan
+    # that wrote has_work=true and THEN failed would skip build, and build's
+    # "skipped" would satisfy the clause below. Without this line that tags and
+    # dispatches off a failed plan. Same guard apt's publish job carries.
+    #
+    # Every clause is load-bearing. `success` or `skipped` and nothing else, so
+    # a FAILED build still stops the tag -- which is the gate this job has
+    # always been. `!cancelled()` so a cancelled run does not tag halfway.
+    # has_work, because overriding the default skip means this could otherwise
+    # be reached with an empty matrix, which GitHub rejects outright rather
+    # than skipping.
+    if: >-
+      !cancelled()
+      && needs.plan.result == 'success'
+      && needs.plan.outputs.has_work == 'true'
+      && contains(fromJSON('["success", "skipped"]'), needs.build.result)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -206,7 +238,13 @@ jobs:
             echo "::error::APT_DISPATCH_TOKEN is empty; $TAG is tagged but unpublished" >&2
             exit 1
           fi
+          # Retried: this is the one call in the chain whose failure is
+          # silent and unrepaired -- the tag exists, the archive is never told,
+          # and apt's ingest has no schedule to catch up on its own. A retried
+          # POST is safe, because the ingest re-plans from scratch and the
+          # archive's concurrency group collapses duplicates into one run.
           curl --fail-with-body -sS -X POST \
+            --retry 3 --retry-all-errors --retry-delay 2 \
             -H "Authorization: Bearer ${TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/pkghaus/apt/dispatches \

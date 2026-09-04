@@ -24,9 +24,15 @@ name: Bump upstream versions
 # asked. They could tell which package had failed, because a failed one had no
 # pull request and its dashboard row's link column was empty; and if a release
 # build failed after a merge they might connect the red run to what they had
-# just merged. The dashboard now states both -- a status per row, and a table of
-# packages whose changelog the archive does not serve -- because otherwise the
+# just merged. The dashboard states both -- why a bump did not land, and which
+# packages carry a changelog the archive does not serve -- because otherwise the
 # failure mode of all this is silence.
+#
+# It states only those. A bump that built, tested, landed and published is not
+# listed at all, and a run with nothing to say writes no issue. Listing the
+# successes meant every clean bump left an issue standing that named a package
+# as behind hours after the archive had already published it, which trains the
+# reader to stop opening the one surface that reports failures.
 #
 # The one directory this must never write is pkghaus-archive-keyring/: it ships
 # the public half of the archive signing key, so changing it is how a compromise
@@ -39,15 +45,34 @@ name: Bump upstream versions
 on:
   schedule:
     # Every six hours, matching the archive's own watcher so the two never
-    # disagree about how current their view is. Affordable only because the plan
-    # skips a package whose version already has an open pull request: without
-    # that, an unmerged bump would rebuild three suites on every run.
+    # disagree about how current their view is.
+    #
+    # Affordable because a bump that passes lands in the same run, so a package
+    # is behind for exactly one run and is never rebuilt for work already done.
+    # The plan used to skip a package whose version had an open pull request,
+    # for the era when landing meant waiting for a human to merge; nothing has
+    # opened such a pull request since bumps started landing directly, so that
+    # check was 25 gh calls a run that could not match, and it is gone. What
+    # does still rebuild every six hours is a bump that keeps FAILING
+    # verification, until upstream moves or the packaging is fixed. That is the
+    # real repeated cost, the pull-request check never addressed it, and the
+    # dashboard names the package so it does not run on unseen.
     - cron: '17 */6 * * *'
   workflow_dispatch:
   push:
     branches: [master]
     # Only the file that can change the plan's answer. Without this filter every
     # README or workflow commit re-renders the dashboard for nothing.
+    #
+    # This covers a package.conf edited and pushed by a person, and nothing
+    # else. It cannot fire for a bump: the land job commits with GITHUB_TOKEN,
+    # and a push made with that token starts no workflow run -- the same fact
+    # that job relies on when it dispatches release.yml explicitly. It was
+    # written when bumps landed as merged pull requests, where the merge was a
+    # human push and this trigger re-rendered the dashboard seconds later.
+    # Landing directly took that away, so the schedule is now the only thing
+    # that closes the issue, which is why the issue exists only when something
+    # is wrong.
     paths: ['*/package.conf']
 
 permissions:
@@ -61,6 +86,7 @@ jobs:
   plan:
     name: Find upstream releases
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       has_work: ${{ steps.plan.outputs.has_work }}
@@ -75,30 +101,34 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           matrix="$(scripts/plan-bumps.sh)"
-          count="$(printf '%s' "$matrix" | grep -o '"package"' | wc -l)"
-          # has_work, not a count comparison: an output that never got set is
-          # empty, and empty != '0' is TRUE, which would start the matrix with no
-          # vectors and fail it.
-          has_work=false
-          [ "$count" -gt 0 ] && has_work=true
-          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
-          printf 'has_work=%s\n' "$has_work" >> "$GITHUB_OUTPUT"
-          printf '%s package(s) behind upstream: %s\n' "$count" "$matrix" >> "$GITHUB_STEP_SUMMARY"
+          scripts/plan-output.sh "$matrix" >> "$GITHUB_OUTPUT"
+          printf 'behind upstream: %s\n' "$matrix" >> "$GITHUB_STEP_SUMMARY"
 
   verify:
-    name: ${{ matrix.entry.package }} ${{ matrix.entry.tag }} / ${{ matrix.suite }}
+    # The arch is in the name because it is now a matrix dimension, and
+    # bump-status.sh keys a leg on the first token before " / " -- which stays
+    # the package either way.
+    name: ${{ matrix.entry.package }} ${{ matrix.entry.tag }} / ${{ matrix.suite }} / ${{ matrix.target.arch }}
     needs: plan
     # Not on a merge. A merge re-renders the dashboard and nothing else: building
     # there would fire on someone else's bump landing, and open would raise pull
     # requests for whatever unrelated packages happened to be behind at the time.
     if: needs.plan.outputs.has_work == 'true' && github.event_name != 'push'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         entry: ${{ fromJSON(needs.plan.outputs.matrix) }}
         suite: [trixie, testing, unstable]
+        # Both architectures, so this covers exactly what release.yml's build
+        # job covered -- which is what lets the bump path skip it. Objects
+        # rather than a bare arch list, for the reason the reusable build
+        # workflow gives: a matrix `include` entry matching no combination adds
+        # a job instead of decorating one.
+        target:
+          - {arch: amd64, runner: ubuntu-24.04}
+          - {arch: arm64, runner: ubuntu-24.04-arm}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -111,8 +141,11 @@ jobs:
         run: scripts/bump-upstream.sh "$PKG" "$TAG"
 
       # The action operates on the working tree, not on a ref, which is what
-      # makes verifying an uncommitted bump possible at all. amd64 only here;
-      # the full three suites by two architectures runs when the tag is pushed.
+      # makes verifying an uncommitted bump possible at all. All three suites on
+      # both architectures: this is the tag build, moved earlier. The tree it
+      # verifies is byte-identical to the one the land step commits, so
+      # repeating it after the tag proved nothing and cost a third of the
+      # pipeline's wall clock.
       - name: Build and DEP-8 test the bumped package
         uses: pkghaus/action-debian-build@v1
         with:
@@ -164,8 +197,13 @@ jobs:
           # --slurp because a run with more than a page of jobs would otherwise
           # lose the legs on page two, and a package whose legs went missing
           # reads as unverified, which stops it landing. Silence is not consent.
+          #
+          # Column 2 is the verify verdict, and it is the only one this step may
+          # read. Column 3 is what the land job concluded, and the land job for
+          # this package is the one asking: it is in_progress by construction, so
+          # consulting it here would refuse every bump forever.
           status="$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --paginate --slurp \
-                    | scripts/verify-status.sh "$MATRIX" \
+                    | scripts/bump-status.sh "$MATRIX" \
                     | awk -v p="$PKG" -F'\t' '$1 == p { print $2 }')"
           printf 'verification for %s: %s\n' "$PKG" "${status:-<none>}"
           if [ "$status" != "success" ]; then
@@ -225,7 +263,11 @@ jobs:
           REPO: ${{ github.repository }}
           PKG: ${{ matrix.entry.package }}
         run: |
-          gh workflow run release.yml --repo "$REPO" -f package="$PKG"
+          # skip_build, because verify above already built this exact tree
+          # across all three suites and both architectures. release.yml honours
+          # it only for the bot; a hand dispatch always gets the gate.
+          gh workflow run release.yml --repo "$REPO" \
+              -f package="$PKG" -f skip_build=true
           printf 'dispatched release for %s\n' "$PKG" >> "$GITHUB_STEP_SUMMARY"
 
   report:
@@ -236,6 +278,7 @@ jobs:
     # in a repository nobody watches notifies no one.
     if: always() && needs.plan.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       issues: write
     steps:
@@ -243,21 +286,16 @@ jobs:
         with:
           persist-credentials: false
 
+
       - name: Open, update or close the dashboard
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
+          EVENT: ${{ github.event_name }}
           MATRIX: ${{ needs.plan.outputs.matrix }}
-          HAS_WORK: ${{ needs.plan.outputs.has_work }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          title='Upstream release drift'
-          # Exact title match, not a search query: search is fuzzy and would
-          # eventually latch onto the wrong issue.
-          number="$(gh issue list --repo "$REPO" --state open --json number,title \
-              --jq ".[] | select(.title == \"$title\") | .number" | head -n1)"
-
           # A package packaged but not published is invisible to the drift check
           # above -- package.conf matches upstream, so it reads as current -- and
           # nothing retries it. An unreadable archive reports nothing rather than
@@ -271,42 +309,44 @@ jobs:
           # later, by a run with nothing in flight.
           in_flight="$(scripts/release-in-flight.sh)"
           stuck='[]'
+          published_checked=no
           if [ "$in_flight" = yes ]; then
               echo "a release or ingest is running; skipping the published check"
           elif out="$(scripts/check-published.sh 2>/dev/null)"; then
               stuck="$out"
+              published_checked=yes
           else
               echo "::warning::could not read the archive; skipping the published check" >&2
           fi
 
-          # Closing needs both checks to have actually run. With one skipped,
-          # "nothing to report" is not established -- leave the issue alone and
-          # let the next run decide.
-          if [ "$HAS_WORK" != "true" ] && [ "$in_flight" = yes ]; then
-              echo "nothing behind upstream; published check skipped, leaving the issue as it is"
-              exit 0
-          fi
-
-          if [ "$HAS_WORK" != "true" ] && [ "$stuck" = "[]" ]; then
-              if [ -n "$number" ]; then
-                  gh issue close "$number" --repo "$REPO" \
-                      --comment "Every enrolled package matches its newest upstream release and the archive serves it. Checked by $RUN_URL"
-              else
-                  echo "nothing to report"
-              fi
-              exit 0
-          fi
-
-          status="$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --paginate --slurp \
-                    | scripts/verify-status.sh "$MATRIX" || true)"
-
-          scripts/drift-report.sh "$MATRIX" "$status" "$stuck" "$RUN_URL" > body.md
-          if [ -z "$number" ]; then
-              # A mention notifies only in newly created content, and being
-              # mentioned subscribes the team to the issue, which is what makes
-              # later edits reach them without mentioning again.
-              { printf '@pkghaus/maintainers\n\n'; cat body.md; } > opening.md
-              gh issue create --repo "$REPO" --title "$title" --body-file opening.md
+          # A push runs neither verify nor land, so this run holds no verdict on
+          # any package. Asking for one would read every planned package as "not
+          # verified" -- a false alarm rather than a missing job -- and raise an
+          # issue naming packages an earlier run had already tested.
+          verified=yes
+          status=''
+          if [ "$EVENT" = push ]; then
+              verified=no
           else
-              gh issue edit "$number" --repo "$REPO" --body-file body.md
+              # --slurp because a run with more than a page of jobs would
+              # otherwise lose the legs on page two, and a package whose legs
+              # went missing reads as unverified rather than as fine.
+              #
+              # Both columns here, unlike the land gate above: by now every land
+              # job has finished, and a package that verified green and then
+              # failed to land is exactly the case nothing else reports.
+              status="$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --paginate --slurp \
+                        | scripts/bump-status.sh "$MATRIX" || true)"
           fi
+
+          # The renderer decides whether anything is wrong, and says so by
+          # producing a body or producing nothing. It is deliberately not asked
+          # whether the plan found work: a run that lands a bump has has_work
+          # true for its whole life, so keying the issue on that meant every
+          # successful bump left one open until the next scheduled run.
+          scripts/drift-report.sh "$MATRIX" "$status" "$stuck" "$RUN_URL" "$verified" > body.md
+
+          # Creating, editing, closing or leaving the issue is one decision and
+          # it lives in a script, where a test can reach it. It is the only
+          # decision here nobody else makes: whether a failure gets reported.
+          scripts/dashboard.sh body.md "$verified" "$published_checked" "$RUN_URL"

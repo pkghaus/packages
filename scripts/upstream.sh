@@ -39,7 +39,39 @@
 #
 # Note gh cannot tell "no releases" from "no such repository": both are 404
 # with that identical message. Absent is absent; nothing here needs to care.
+# Retried on a transient failure, never on a 404.
+#
+# A blip currently reads as "no release or tag found", and plan-bumps.sh then
+# skips the package: no bump, no error, nothing said, until the next scheduled
+# run six hours later. Absent, by contrast, is a real answer -- gotypist
+# publishes no releases at all -- so retrying a 404 would triple the cost of
+# every package in that state for no information.
+#
+# The retry lives here rather than as curl --retry because gh is what CI
+# actually uses: the curl branch below is the fallback for a machine without
+# it, so a flag on that call would never fire where it matters.
+UPSTREAM_ATTEMPTS="${UPSTREAM_ATTEMPTS:-3}"
+
 api() {
+    local path="$1" attempt=1 delay=2 rc
+    while true; do
+        if _api_once "$path"; then
+            return 0
+        else
+            rc=$?
+        fi
+        if [ "$rc" -eq 3 ] || [ "$attempt" -ge "$UPSTREAM_ATTEMPTS" ]; then
+            return "$rc"
+        fi
+        printf 'upstream %s: attempt %s/%s failed; retrying in %ss\n' \
+            "$path" "$attempt" "$UPSTREAM_ATTEMPTS" "$delay" >&2
+        sleep "$delay"
+        attempt=$((attempt + 1))
+        delay=$((delay * 2))
+    done
+}
+
+_api_once() {
     local path="$1" body errfile rc status
     local -a auth=()
 
