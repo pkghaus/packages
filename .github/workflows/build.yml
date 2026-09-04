@@ -23,6 +23,7 @@ jobs:
   plan:
     name: Decide what to build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       packages: ${{ steps.plan.outputs.packages }}
       has_work: ${{ steps.plan.outputs.has_work }}
@@ -80,13 +81,8 @@ jobs:
           # was never what made this work.
           json="$(printf '%s\n' "$pkgs" | sed '/^$/d' | sort -u \
                   | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')"
-          count="$(printf '%s' "$json" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
-          has_work=false
-          [ "$count" -gt 0 ] && has_work=true
-
-          printf 'packages=%s\n' "$json" >> "$GITHUB_OUTPUT"
-          printf 'has_work=%s\n' "$has_work" >> "$GITHUB_OUTPUT"
-          printf 'building %s package(s): %s\n' "$count" "$json" >> "$GITHUB_STEP_SUMMARY"
+          scripts/plan-output.sh "$json" packages >> "$GITHUB_OUTPUT"
+          printf 'building: %s\n' "$json" >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: ${{ matrix.package }}

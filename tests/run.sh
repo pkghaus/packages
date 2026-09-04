@@ -153,15 +153,15 @@ echo "bump plan"
     # The upstream is stubbed, so this exercises the plan's own decisions and
     # nothing else. Overriding after the source is the point of the guard.
     latest_tag() { case "$1" in x/behind) echo v1.1.0 ;; x/current) echo v2.0.0 ;; *) echo v9 ;; esac; }
-    ROOT="$work"; PACKAGES_FILE="$work/packages.txt"; REPO=""
+    ROOT="$work"; PACKAGES_FILE="$work/packages.txt"
 
     out="$(plan)"
 
     # The regression this exists for: the row append was once deleted while the
-    # open-pull-request check above it was rewritten, so the plan detected drift
-    # and emitted nothing. It ran green for a day because every package happened
-    # to be current, and an empty plan is indistinguishable from a correct one
-    # until something is actually behind.
+    # open-pull-request check that used to sit above it was rewritten, so the
+    # plan detected drift and emitted nothing. It ran green for a day because
+    # every package happened to be current, and an empty plan is
+    # indistinguishable from a correct one until something is actually behind.
     eq "a package behind upstream produces a row" \
        '[{"package":"behind","tag":"v1.1.0"}]' "$out"
 
@@ -179,6 +179,11 @@ echo "upstream lookup: absent and unreachable are different answers"
     # they are offline and deterministic.
     bin="$(mktemp -d)"; log="$bin/asked"; : > "$log"
     export PATH="$bin:$PATH" API_BASE="http://127.0.0.1:1"
+    # One attempt, so the transient cases below answer immediately. The retry
+    # has its own group; here it would only add six seconds of sleeping per
+    # failing lookup, of which this group has nine. Same reasoning as
+    # action-debian-build lowering CLONE_ATTEMPTS in its retry test.
+    export UPSTREAM_ATTEMPTS=1
     unset GH_TOKEN GITHUB_TOKEN
 
     # A gh that logs what it was asked and answers per-path. Reproduces the
@@ -344,6 +349,88 @@ FAKE
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 
+echo "upstream retry"
+(
+    # The retry exists because a blip made a package silently un-bumped for six
+    # hours: plan-bumps.sh reads "cannot reach" as "no release found" and skips.
+    # It is deliberately at api() rather than on the curl call, because gh is
+    # what CI uses and the curl branch is the fallback for a machine without it.
+    bin="$(mktemp -d)"; log="$bin/asked"; : > "$log"
+    export PATH="$bin:$PATH" API_BASE="http://127.0.0.1:1" ASKED="$log"
+    export COUNTER="$bin/n"
+    unset GH_TOKEN GITHUB_TOKEN
+
+    # Fails the first $GH_FAIL_TIMES calls, then answers. Deterministic: the
+    # failures are counted, not timed.
+    cat > "$bin/gh" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "$*" >> "$ASKED"
+case "$*" in
+  *"${GH_404_PATH:-__none__}"*)
+      printf '{"message":"Not Found","status":"404"}'
+      echo 'gh: Not Found (HTTP 404)' >&2
+      exit 1 ;;
+esac
+n=$(cat "$COUNTER" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$COUNTER"
+if [ "$n" -le "${GH_FAIL_TIMES:-0}" ]; then
+    printf '{"message":"Server Error"}'
+    echo 'gh: Internal Server Error (HTTP 502)' >&2
+    exit 1
+fi
+printf '%s' "$GH_BODY"
+FAKE
+    chmod +x "$bin/gh"
+
+    # shellcheck source=scripts/upstream.sh
+    . "$ROOT/scripts/upstream.sh"
+
+    reset() { : > "$ASKED"; : > "$COUNTER"; }
+
+    # --- a transient failure is retried and the answer still arrives ---------
+    reset
+    export GH_BODY='{"tag_name":"v1.2.3"}' GH_FAIL_TIMES=1 UPSTREAM_ATTEMPTS=2
+    out="$(api "repos/x/y/releases/latest")" && rc=0 || rc=$?
+    eq "a transient failure is retried, not reported" "0" "$rc"
+    eq "and the second attempt's answer is returned" '{"tag_name":"v1.2.3"}' "$out"
+    eq "which took exactly two calls" "2" "$(grep -c . "$ASKED")"
+
+    # The whole point, at the level plan-bumps.sh sees: before the retry this
+    # blip made the package look like it had no upstream release at all.
+    reset
+    eq "a blip no longer loses the package" "v1.2.3" "$(latest_tag x/y)"
+
+    # --- exhausting the budget still fails, and only after all of it ---------
+    reset
+    export GH_FAIL_TIMES=99 UPSTREAM_ATTEMPTS=2
+    api "repos/x/y/releases/latest" >/dev/null 2>&1 && rc=0 || rc=$?
+    eq "an unreachable upstream still fails" "1" "$rc"
+    eq "after exactly the attempt budget" "2" "$(grep -c . "$ASKED")"
+
+    # --- 404 is an answer, not a failure ------------------------------------
+    # The load-bearing one. gotypist publishes no releases at all, so this is
+    # the steady state for a real fleet package: retrying it would triple the
+    # cost of every such lookup, every six hours, for no information.
+    reset
+    export GH_404_PATH="repos/x/y/releases/latest" GH_FAIL_TIMES=0 UPSTREAM_ATTEMPTS=3
+    api "repos/x/y/releases/latest" >/dev/null 2>&1 && rc=0 || rc=$?
+    eq "an absent release is reported as absent" "3" "$rc"
+    eq "and is never retried" "1" "$(grep -c . "$ASKED")"
+
+    # The default is what production uses: nothing sets this in CI. Every
+    # assertion above sets its own budget, so a default of 1 would disable the
+    # retry estate-wide and leave all of them green -- which is exactly what a
+    # mutation test caught here.
+    default="$(unset UPSTREAM_ATTEMPTS; . "$ROOT/scripts/upstream.sh"; printf '%s' "$UPSTREAM_ATTEMPTS")"
+    if [ "${default:-0}" -gt 1 ]; then
+        ok "the default budget actually retries"
+    else
+        no "the default budget actually retries" "got [$default]"
+    fi
+
+    rm -rf "$bin"
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
 echo "release in flight"
 (
     inflight="$ROOT/scripts/release-in-flight.sh"
@@ -386,63 +473,263 @@ echo "release in flight"
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 
+echo "dashboard decision"
+(
+    # The one decision in this pipeline nobody else makes: whether a failure
+    # gets reported at all. It was thirty lines of workflow YAML, which no test
+    # could reach -- and this repository's own comments record four production
+    # bugs in workflow shell, none of them catchable where they sat.
+    dash="$ROOT/scripts/dashboard.sh"
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    export PATH="$work/bin:$PATH" REPO=pkghaus/packages GH_LOG="$work/gh.log"
+    mkdir -p "$work/bin"
+
+    # A gh that records what it was asked and answers `issue list` from a
+    # fixture. Everything else succeeds silently, because what is asserted is
+    # which call was made, not what GitHub would have replied.
+    cat > "$work/bin/gh" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "$*" >> "$GH_LOG"
+case "$1 $2" in
+    "issue list") printf '%s' "${GH_ISSUES:-[]}" ;;
+esac
+exit 0
+FAKE
+    chmod +x "$work/bin/gh"
+
+    body="$work/body.md"
+    reset() { : > "$GH_LOG"; }
+    asked() { grep -c "$1" "$GH_LOG" 2>/dev/null || true; }
+
+    # --- something is wrong and no issue exists yet --------------------------
+    reset; printf '### Bumps that did not land\n' > "$body"
+    export GH_ISSUES='[]'
+    "$dash" "$body" yes yes https://run/1 >/dev/null
+    eq "a body with no open issue creates one" "1" "$(asked 'issue create')"
+    eq "and never edits or closes"             "0" "$(asked 'issue edit\|issue close')"
+
+    # --- something is wrong and the issue is already open --------------------
+    reset
+    export GH_ISSUES='[{"number":17,"title":"Upstream release drift"}]'
+    "$dash" "$body" yes yes https://run/1 >/dev/null
+    eq "a body with an open issue edits it" "1" "$(asked 'issue edit 17')"
+    eq "and does not open a second one"     "0" "$(asked 'issue create')"
+
+    # Exact title, never a search. A fuzzy match eventually latches onto the
+    # wrong issue and starts overwriting somebody else's report.
+    reset
+    export GH_ISSUES='[{"number":42,"title":"Upstream release drift (old)"}]'
+    "$dash" "$body" yes yes https://run/1 >/dev/null
+    eq "a near-miss title is not the dashboard" "1" "$(asked 'issue create')"
+    eq "and is not edited"                      "0" "$(asked 'issue edit')"
+
+    # --- nothing is wrong ----------------------------------------------------
+    reset; : > "$body"
+    export GH_ISSUES='[{"number":17,"title":"Upstream release drift"}]'
+    "$dash" "$body" yes yes https://run/1 >/dev/null
+    eq "an empty body closes the open issue" "1" "$(asked 'issue close 17')"
+
+    reset; export GH_ISSUES='[]'
+    "$dash" "$body" yes yes https://run/1 >/dev/null
+    # It still lists, because it has to look before it can decide; what it must
+    # not do is write.
+    eq "with nothing open there is nothing to write" "0" \
+       "$(asked 'issue create\|issue edit\|issue close')"
+
+    # --- nothing to report, but a check did not run --------------------------
+    # The fail-safe. "Nothing to report" is only "nothing is wrong" when both
+    # checks actually ran; the published one is skipped while a release is in
+    # flight, and a push run verifies nothing. Closing on half the evidence is
+    # how a dashboard starts lying.
+    reset; export GH_ISSUES='[{"number":17,"title":"Upstream release drift"}]'
+    "$dash" "$body" yes no https://run/1 >/dev/null
+    eq "an unrun published check does not close the issue" "0" "$(asked 'issue close')"
+
+    reset
+    "$dash" "$body" no yes https://run/1 >/dev/null
+    eq "an unverified run does not close it either" "0" "$(asked 'issue close')"
+
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
+echo "enrolment check"
+(
+    # The CI gate nothing tested. Its failure mode is the quiet one: if it
+    # stopped detecting, an enrolled-but-absent package would be skipped by
+    # plan-bumps.sh with a warning nobody reads, skipped again by the ingest,
+    # and nothing would say the fleet had shrunk.
+    ce="$ROOT/scripts/check-enrolment.sh"
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    mkpkg() { mkdir -p "$work/$1"; : > "$work/$1/package.conf"; }
+    run() { ROOT="$work" PACKAGES_FILE="$work/packages.txt" "$ce" 2>&1; }
+    rc() { ROOT="$work" PACKAGES_FILE="$work/packages.txt" "$ce" >/dev/null 2>&1; echo $?; }
+
+    mkpkg croc; printf 'croc\n' > "$work/packages.txt"
+    eq "an enrolled package with a directory passes" "0" "$(rc)"
+    eq "and is counted" "1 enrolled, 0 staged, 0 missing" "$(run | tail -1)"
+
+    # The direction that matters: the ingest would try to build a package that
+    # is not here.
+    printf 'croc\nghost\n' > "$work/packages.txt"
+    eq "an enrolled package with no directory fails" "1" "$(rc)"
+    eq "and is named" "1" "$(run | grep -c 'enrolled but absent: ghost')"
+
+    # Deliberately not an error. A directory without a line is a package staged
+    # in the tree, built on pull requests and not published.
+    printf 'croc\n' > "$work/packages.txt"; mkpkg vale
+    eq "a directory with no line is staged, not an error" "0" "$(rc)"
+    eq "and is reported as staged" "1 enrolled, 1 staged, 0 missing" "$(run | tail -1)"
+
+    # A directory that is not a package at all must not be counted either way.
+    mkdir -p "$work/docs"
+    eq "a directory without package.conf is not a package" "1 enrolled, 1 staged, 0 missing" \
+       "$(run | tail -1)"
+
+    printf '# a comment\n\ncroc\n' > "$work/packages.txt"
+    eq "comments and blank lines are ignored" "1 enrolled, 1 staged, 0 missing" "$(run | tail -1)"
+
+    # Both loops have to agree about what a line means. They did not: the first
+    # stripped trailing whitespace and the second grepped the raw file, so this
+    # counted croc as enrolled AND reported croc as staged in the same breath.
+    printf 'croc  \n' > "$work/packages.txt"; rm -rf "$work/vale" "$work/docs"
+    eq "a line with trailing whitespace is enrolled exactly once" \
+       "1 enrolled, 0 staged, 0 missing" "$(run | tail -1)"
+
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
+echo "plan output"
+(
+    po="$ROOT/scripts/plan-output.sh"
+
+    eq "a populated plan says there is work" \
+       'matrix=[{"package":"croc","tag":"v1"}]
+has_work=true' "$("$po" '[{"package":"croc","tag":"v1"}]')"
+
+    eq "an empty plan says there is none" 'matrix=[]
+has_work=false' "$("$po" '[]')"
+
+    # build.yml's plan calls its output "packages" and emits plain strings, so
+    # the count cannot come from grepping for a "package" key -- which is what
+    # bump.yml did, correct only for its own row shape.
+    eq "the output name is selectable" 'packages=["croc","vale"]
+has_work=true' "$("$po" '["croc","vale"]' packages)"
+
+    # The load-bearing one. A plan that produced garbage must fail the step, not
+    # report has_work=false: false skips the matrix and the run goes green
+    # having built nothing, which is the exact failure this repo has shipped
+    # twice before under other names.
+    out="$("$po" 'not json' 2>/dev/null)" && rc=0 || rc=$?
+    eq "malformed input fails rather than reporting no work" "1" "$rc"
+    eq "and prints nothing a caller could append" "" "$out"
+
+    # The caller appends this verbatim to $GITHUB_OUTPUT, so the shape is the
+    # contract: exactly two lines, name first.
+    eq "exactly two lines are printed" "2" "$("$po" '[]' | grep -c .)"
+
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
 echo "drift dashboard"
 (
     report="$ROOT/scripts/drift-report.sh"
     two='[{"package":"a","tag":"v1"},{"package":"b","tag":"v2"}]'
     one='[{"package":"a","tag":"v1"}]'
-    render() { "$report" "$1" "$2" "$3" https://run/1; }
+    render() { "$report" "$1" "$2" "$3" https://run/1 "${4:-yes}"; }
+    # "<package>\t<verify>\t<land>", as bump-status.sh emits it.
+    st() { printf '%s\t%s\t%s' "$1" "$2" "$3"; }
 
-    eq "a behind package gets a row" "1" \
-       "$(render "$one" "$(printf 'a\tsuccess')" '[]' | grep -c '^| `a`')"
+    # The whole shape of the surface. A bump that passed and landed is not a
+    # problem, so it is not listed and -- with nothing else wrong -- there is no
+    # body at all. The caller reads an empty body as "close it", so this one
+    # assertion is what stops a clean bump leaving an issue open until the next
+    # scheduled run six hours later.
+    eq "a package that passed and landed is not listed" "" \
+       "$(render "$one" "$(st a success success)" '[]')"
+    eq "nor is a whole run of them" "" \
+       "$(render "$two" "$(printf '%s\n%s' "$(st a success success)" "$(st b success success)")" '[]')"
+    eq "and the word landed appears nowhere" "0" \
+       "$(render "$two" "$(printf '%s\n%s' "$(st a success success)" "$(st b success success)")" '[]' \
+          | grep -c 'landed' || true)"
 
-    eq "every row is rendered, not just the first" "2" \
-       "$(render "$two" "$(printf 'a\tsuccess\nb\tsuccess')" '[]' | grep -c '^| `')"
-
-    # The status is per row now. It used to be one line for the whole run, and
-    # which package it meant was inferred from an empty pull-request column --
-    # a column Stage 2 removes.
-    eq "a passing package says it landed" "1" \
-       "$(render "$one" "$(printf 'a\tsuccess')" '[]' | grep -c 'landed, releasing')"
-    eq "a failed package says so, in its own row" "1" \
-       "$(render "$two" "$(printf 'a\tsuccess\nb\tfailure')" '[]' \
+    eq "a failed package is listed, in its own row" "1" \
+       "$(render "$two" "$(printf '%s\n%s' "$(st a success success)" "$(st b failure success)")" '[]' \
           | grep -c '^| `b`.*verification failed')"
-    eq "and the passing one alongside it still says landed" "1" \
-       "$(render "$two" "$(printf 'a\tsuccess\nb\tfailure')" '[]' \
-          | grep -c '^| `a`.*landed')"
+    # The counterpart of the first assertion, on a run that does render: the
+    # passing package must not ride along into a table about problems.
+    eq "and the passing one beside it is left out" "0" \
+       "$(render "$two" "$(printf '%s\n%s' "$(st a success success)" "$(st b failure success)")" '[]' \
+          | grep -c '^| `a`')"
     eq "a cancelled package says cancelled" "1" \
-       "$(render "$one" "$(printf 'a\tcancelled')" '[]' | grep -c 'verification cancelled')"
+       "$(render "$one" "$(st a cancelled success)" '[]' | grep -c 'verification cancelled')"
+    eq "an unheard-of verify status is named, not rounded off" "1" \
+       "$(render "$one" "$(st a timed_out success)" '[]' | grep -c '^| `a`.*timed_out')"
 
-    # An issue raised only by the stuck check used to open with a bare header
-    # and nothing under it, which is the first thing a reader sees and has to
-    # decode. The stuck table below already followed this rule; the upstream
-    # one did not.
-    stuck='[{"package":"k","arch":"amd64","packaged":"2","published":"1"}]'
-    eq "nothing behind upstream prints no table header" "0" \
-       "$(render '[]' '' "$stuck" | grep -c '^| package | upstream tag')"
-    eq "it says so in words instead" "1" \
-       "$(render '[]' '' "$stuck" | grep -c 'Every enrolled package matches its newest upstream release')"
-    eq "and the stuck table is still rendered beneath it" "1" \
-       "$(render '[]' '' "$stuck" | grep -c '^| `k` | amd64')"
-    eq "a behind package still gets its header" "1" \
-       "$(render "$one" "$(printf 'a\tsuccess')" '[]' | grep -c '^| package | upstream tag')"
+    # The gap the land column closes. Every suite green and the commit never
+    # written: nothing else in the estate reports this, because package.conf is
+    # unchanged so the next drift run calls the package behind rather than
+    # broken, and the archive has nothing to be missing.
+    eq "a package that verified but did not land is listed" "1" \
+       "$(render "$one" "$(st a success failure)" '[]' | grep -c 'verified, but landing failed')"
+    eq "a cancelled landing says so" "1" \
+       "$(render "$one" "$(st a success cancelled)" '[]' | grep -c 'verified, but landing was cancelled')"
+    eq "an unaccounted-for landing is not read as fine" "1" \
+       "$(render "$one" "$(st a success unknown)" '[]' | grep -c 'landing is unaccounted for')"
+    eq "an unheard-of land status is named too" "1" \
+       "$(render "$one" "$(st a success timed_out)" '[]' | grep -c '^| `a`.*landing timed_out')"
+    # Verify first: a package that failed verification also has a land job that
+    # concluded success, because the gate exits 0 after refusing it. Reading the
+    # land column first would report every verification failure as landed.
+    eq "a verification failure outranks its own land success" "1" \
+       "$(render "$one" "$(st a failure success)" '[]' | grep -c 'verification failed')"
 
     # The load-bearing one. A package the status table never mentioned must not
     # read as fine, or a reporter that silently found nothing looks like a clean
     # run.
     eq "a package with no status reads as not verified" "1" \
        "$(render "$one" "" '[]' | grep -c 'not verified')"
-    eq "and never as landed" "0" \
-       "$(render "$one" "" '[]' | grep -c 'landed')"
+    # A short line is a caller that did not report on landing, which is not the
+    # same as one that reported it went well.
+    eq "a status line missing its land column is not read as landed" "1" \
+       "$(render "$one" "$(printf 'a\tsuccess')" '[]' | grep -c 'landing is unaccounted for')"
+
+    # A push runs neither verify nor land, so it has no verdict on anything.
+    # Without this the status table would call every planned package "not
+    # verified" and raise an issue about packages an earlier run had tested.
+    eq "an unverified run reports no bumps at all" "" \
+       "$(render "$one" "" '[]' no)"
+    stuck='[{"package":"k","arch":"amd64","packaged":"2","published":"1"}]'
+    eq "but still reports what the archive does not serve" "1" \
+       "$(render "$one" "" "$stuck" no | grep -c '^| `k` | amd64')"
+    eq "and says nothing about verification while doing it" "0" \
+       "$(render "$one" "" "$stuck" no | grep -c 'not verified')"
+
+    eq "nothing behind upstream prints no bump table" "0" \
+       "$(render '[]' '' "$stuck" | grep -c '^| package | upstream tag')"
+    eq "and the stuck table stands on its own" "1" \
+       "$(render '[]' '' "$stuck" | grep -c '^### Packaged but not published')"
+    eq "a listed bump gets its own heading" "1" \
+       "$(render "$one" "$(st a failure success)" '[]' | grep -c '^### Bumps that did not land')"
 
     stuck='[{"package":"ouch","arch":"arm64","packaged":"0.8.3-1","published":"0.8.2-1"}]'
     eq "nothing stuck renders no second table" "0" \
-       "$(render "$one" "$(printf 'a\tsuccess')" '[]' | grep -c 'Packaged but not published')"
+       "$(render "$one" "$(st a failure success)" '[]' | grep -c 'Packaged but not published')"
     eq "a stuck package renders the second table" "1" \
-       "$(render "$one" "$(printf 'a\tsuccess')" "$stuck" | grep -c 'Packaged but not published')"
+       "$(render "$one" "$(st a failure success)" "$stuck" | grep -c 'Packaged but not published')"
     eq "and names the package, arch and both versions" "1" \
-       "$(render "$one" "$(printf 'a\tsuccess')" "$stuck" \
+       "$(render "$one" "$(st a failure success)" "$stuck" \
           | grep -c '^| `ouch` | arm64 | `0.8.3-1` | `0.8.2-1` |')"
+    eq "both tables render together when both apply" "2" \
+       "$(render "$one" "$(st a failure success)" "$stuck" | grep -c '^### ')"
+
+    # A stuck package alone is reason enough to open the issue, with no bump
+    # behind upstream anywhere in the run.
+    eq "a stuck package alone produces a body" "1" \
+       "$(render '[]' '' "$stuck" | grep -c 'Checked by https://run/1')"
+    eq "and nothing wrong produces none" "" \
+       "$(render '[]' '' '[]')"
 
     exit $((fail > 0))
 ) || fail=$((fail + 1))
@@ -590,12 +877,26 @@ echo "keyring guard"
         -c commit.gpgsign=false commit -q -m "human with a noreply address"
     eq "a noreply address alone is not a bot"  "0" "$(run "$(git -C "$work" rev-parse HEAD~1)")"
 
+    # github.event.before is all-zeros on a branch's first push and empty on
+    # events carrying no before. Both used to be normalised in the workflow, in
+    # three separate copies no test could reach; the script owns it now.
+    mk "github-actions[bot]" pkghaus-archive-keyring/keys/pkg.asc
+    eq "an all-zeros before still catches the bot" "1" \
+       "$(run 0000000000000000000000000000000000000000)"
+    eq "an empty before still catches the bot" "1" "$(run '')"
+
+    # And the sentinel must not become a blanket amnesty: with the bot commit
+    # one deeper, HEAD^ is the range base and HEAD itself is clean.
+    mk "Martin Simon" README.md
+    eq "a clean tip under a sentinel before passes" "0" \
+       "$(run 0000000000000000000000000000000000000000)"
+
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 
-echo "verify status"
+echo "bump status"
 (
-    vs="$ROOT/scripts/verify-status.sh"
+    bs="$ROOT/scripts/bump-status.sh"
     jobs='{"jobs":[
       {"name":"Find upstream releases","conclusion":"success"},
       {"name":"a v1 / trixie","conclusion":"success"},
@@ -604,32 +905,64 @@ echo "verify status"
       {"name":"b v2 / trixie","conclusion":"failure"},
       {"name":"b v2 / testing","conclusion":"success"},
       {"name":"b v2 / unstable","conclusion":"cancelled"},
+      {"name":"land a","conclusion":"success"},
+      {"name":"land b","conclusion":"success"},
       {"name":"Drift dashboard","conclusion":"success"}]}'
     m='[{"package":"a","tag":"v1"},{"package":"b","tag":"v2"},{"package":"c","tag":"v3"}]'
-    got="$(printf '%s' "$jobs" | "$vs" "$m")"
+    got="$(printf '%s' "$jobs" | "$bs" "$m")"
 
-    eq "all legs green is success"        "a	success"   "$(printf '%s\n' "$got" | grep '^a')"
+    eq "all legs green is success"        "a	success	success"   "$(printf '%s\n' "$got" | grep '^a')"
     # failure outranks cancelled: a cancelled leg alongside a real failure must
     # not soften the verdict.
-    eq "any failing leg is failure"       "b	failure"   "$(printf '%s\n' "$got" | grep '^b')"
-    eq "a package with no legs is unknown" "c	unknown"  "$(printf '%s\n' "$got" | grep '^c')"
-    eq "jobs that are not legs are ignored" "3"          "$(printf '%s\n' "$got" | grep -c .)"
+    eq "any failing leg is failure"       "b	failure	success"   "$(printf '%s\n' "$got" | grep '^b')"
+    eq "a package with no legs is unknown" "c	unknown	unknown"  "$(printf '%s\n' "$got" | grep '^c')"
+    eq "jobs that are not legs are ignored" "3"                  "$(printf '%s\n' "$got" | grep -c .)"
+
+    # b verified red and its land job still concluded success, because the land
+    # job's gate exits 0 after refusing to land it. That is why the land column
+    # is only ever read once verify has said success.
+    eq "a land job concluding success does not mean the package landed" "success" \
+       "$(printf '%s\n' "$got" | awk -F'\t' '$1=="b"{print $3}')"
+
+    # The gap this column exists for: every suite green, and the commit never
+    # written.
+    lf='{"jobs":[{"name":"a v1 / trixie","conclusion":"success"},
+                 {"name":"land a","conclusion":"failure"}]}'
+    eq "a verified package whose landing failed says so" "a	success	failure" \
+       "$(printf '%s' "$lf" | "$bs" '[{"package":"a","tag":"v1"}]')"
+
+    # A land leg that never ran is unaccounted for, not fine. Same rule as the
+    # verify column: absence is never success.
+    nl='{"jobs":[{"name":"a v1 / trixie","conclusion":"success"}]}'
+    eq "a missing land leg is unknown" "a	success	unknown" \
+       "$(printf '%s' "$nl" | "$bs" '[{"package":"a","tag":"v1"}]')"
+
+    # `land` is a legal Debian source name. Its own verify legs must not be
+    # filed as a land leg belonging to its tag, which is why " / " is tested
+    # before the "land " prefix.
+    ln='{"jobs":[{"name":"land v1 / trixie","conclusion":"failure"},
+                 {"name":"land land","conclusion":"success"}]}'
+    eq "a package called land is not confused with a land leg" "land	failure	success" \
+       "$(printf '%s' "$ln" | "$bs" '[{"package":"land","tag":"v1"}]')"
 
     cx='{"jobs":[{"name":"a v1 / trixie","conclusion":"cancelled"},
-                 {"name":"a v1 / testing","conclusion":"success"}]}'
-    eq "cancelled without failure is cancelled" "a	cancelled" \
-       "$(printf '%s' "$cx" | "$vs" '[{"package":"a","tag":"v1"}]')"
+                 {"name":"a v1 / testing","conclusion":"success"},
+                 {"name":"land a","conclusion":"success"}]}'
+    eq "cancelled without failure is cancelled" "a	cancelled	success" \
+       "$(printf '%s' "$cx" | "$bs" '[{"package":"a","tag":"v1"}]')"
 
     # gh api --paginate --slurp wraps the pages in a list. A run with more than
     # a page of jobs must not lose the ones on page two.
     pg='[{"jobs":[{"name":"a v1 / trixie","conclusion":"success"}]},
-         {"jobs":[{"name":"a v1 / testing","conclusion":"failure"}]}]'
-    eq "a paginated payload is read across pages" "a	failure" \
-       "$(printf '%s' "$pg" | "$vs" '[{"package":"a","tag":"v1"}]')"
+         {"jobs":[{"name":"a v1 / testing","conclusion":"failure"},
+                  {"name":"land a","conclusion":"success"}]}]'
+    eq "a paginated payload is read across pages" "a	failure	success" \
+       "$(printf '%s' "$pg" | "$bs" '[{"package":"a","tag":"v1"}]')"
 
-    ip='{"jobs":[{"name":"a v1 / trixie","status":"in_progress","conclusion":null}]}'
-    eq "an unfinished leg is named, not rounded to success" "a	in_progress" \
-       "$(printf '%s' "$ip" | "$vs" '[{"package":"a","tag":"v1"}]')"
+    ip='{"jobs":[{"name":"a v1 / trixie","status":"in_progress","conclusion":null},
+                 {"name":"land a","status":"in_progress","conclusion":null}]}'
+    eq "an unfinished leg is named, not rounded to success" "a	in_progress	in_progress" \
+       "$(printf '%s' "$ip" | "$bs" '[{"package":"a","tag":"v1"}]')"
 
     exit $((fail > 0))
 ) || fail=$((fail + 1))

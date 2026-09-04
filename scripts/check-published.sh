@@ -34,7 +34,13 @@ changelog_version() {
 # Overridden in the tests, which have no network. Anything that prints a
 # Packages file works.
 fetch_index() { # arch
-    curl -fsSL --max-time 60 "$ARCHIVE_BASE/dists/unstable/main/binary-$1/Packages"
+    # Retried: a blip here skips the published check for six hours, and the
+    # whole point of that check is that nothing else notices a package which
+    # landed but never reached the archive. Failing is still safe -- the caller
+    # reports nothing rather than inventing 25 stuck packages -- so this only
+    # makes the safe outcome rarer.
+    curl -fsSL --max-time 60 --retry 3 --retry-all-errors --retry-delay 2 \
+        "$ARCHIVE_BASE/dists/unstable/main/binary-$1/Packages"
 }
 
 # "Package: x\nVersion: y" -> "x y", for the whole index in one pass.

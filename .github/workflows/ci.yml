@@ -12,6 +12,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -60,10 +61,6 @@ jobs:
         env:
           BEFORE: ${{ github.event.before }}
           SHA: ${{ github.sha }}
-        run: |
-          before="$BEFORE"
-          case "$before" in
-              ''|0000000000000000000000000000000000000000)
-                  before="$(git rev-parse "$SHA^")" ;;
-          esac
-          scripts/check-keyring-author.sh "$before" "$SHA"
+        # The all-zeros and empty forms of github.event.before are handled
+        # inside the script, where a test can reach them.
+        run: scripts/check-keyring-author.sh "$BEFORE" "$SHA"

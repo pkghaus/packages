@@ -33,6 +33,20 @@ to="${2:?usage: check-keyring-author.sh <from> <to>}"
 
 git_() { git -C "$ROOT" "$@"; }
 
+# github.event.before is all-zeros on the first push to a branch, and empty on
+# events that carry no before at all. Neither is a commit, and a range built on
+# one is not a range: git errors, the step dies, and the guard that was supposed
+# to run did not.
+#
+# Handled here rather than at the call sites. It was written out three times --
+# ci.yml, release.yml twice -- around a script that already knew what a range
+# was, and none of those copies was reachable by a test. This one is.
+case "$from" in
+    ''|0000000000000000000000000000000000000000)
+        from="$(git_ rev-parse "$to^")"
+        ;;
+esac
+
 bad=0
 while read -r commit; do
     [ -n "$commit" ] || continue
