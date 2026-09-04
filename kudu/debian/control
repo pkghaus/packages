@@ -1,0 +1,32 @@
+Source: kudu
+Section: admin
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ rustup,
+ cmake,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://github.com/pythops/kudu
+
+Package: kudu
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ ca-certificates,
+ passt,
+ xorriso,
+ qemu-system-x86 | qemu-system-arm | qemu-system-misc,
+Recommends:
+ ovmf,
+ qemu-efi-aarch64,
+Description: terminal VM manager for QEMU without libvirt
+ kudu creates and manages QEMU virtual machines from a terminal
+ interface, as an alternative to virt-manager or GNOME Boxes. It
+ talks to QEMU directly over QMP rather than through libvirt, and
+ uses cloud-init images for guest provisioning.
+ .
+ KVM acceleration is used where /dev/kvm is available and the
+ interface reports its absence rather than refusing to start.

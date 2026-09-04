@@ -1,0 +1,89 @@
+#!/bin/bash
+#
+# READ THIS BEFORE TRUSTING A PASS.
+#
+# This test is deliberately thin, and thinner than every other test in this
+# fleet. impala manages wifi through iwd over D-Bus, and iwd cannot run in a
+# container: it needs kernel crypto through AF_ALG and fails at "No HMAC(SHA1)
+# support found" before it even looks for an interface. There is no wireless
+# device either. So impala's TUI is unreachable here, and unlike bluetui it has
+# no configuration file to exercise instead -- its entire surface is --mode and
+# --ascii.
+#
+# Its runtime failure is also useless as an assertion: without iwd it reports
+# "No such file or directory (os error 2)", byte-identical whether or not a
+# system D-Bus is running, so it discriminates nothing.
+#
+# What is left is the command-line contract, and one pair inside it that does
+# discriminate: clap accepts the two documented modes and rejects anything else
+# with a different exit status and a message naming the valid values. That
+# proves the binary runs, that its declared interface is the one it enforces,
+# and that --help is not lying about what it takes.
+#
+# WHAT THIS DOES NOT PROVE: that impala scans, connects to, lists or manages
+# any network, or that it can talk to iwd at all. Read a pass as "the binary is
+# not broken and its interface is as documented", in the same spirit as the
+# i3-autodisplay test. A real functional gate needs a machine-isolation testbed
+# with mac80211_hwsim providing virtual radios, which is how iwd's own upstream
+# suite tests itself; the builder provides container isolation only.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+want="$(dpkg-query -W -f='${Version}' impala | sed 's/-[^-]*$//')"
+reported="$(impala --version 2>&1)"
+printf '%s\n' "$reported"
+case "$reported" in
+    *"$want"*) ;;
+    *) echo "impala --version [$reported] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+help="$(impala --help 2>&1)"
+printf '%s\n' "$help"
+for token in '--mode' 'station' 'ap' '--ascii'; do
+    case "$help" in
+        *"$token"*) ;;
+        *) echo "--help does not document [$token]" >&2; exit 1 ;;
+    esac
+done
+
+# The discriminating pair. An invalid mode must be refused by argument parsing,
+# with a status distinct from the runtime failure a valid mode reaches -- so a
+# binary that simply died on startup regardless of its arguments would fail
+# here rather than pass.
+set +e
+impala --mode definitely-not-a-mode >"$WORK/out" 2>"$WORK/err"
+bogus_rc=$?
+set -e
+printf '  invalid mode: rc=%s %s\n' "$bogus_rc" "$(head -1 "$WORK/err" | cut -c1-72)"
+
+[ "$bogus_rc" = 2 ] || {
+    echo "an invalid --mode exited $bogus_rc; clap validation should exit 2" >&2
+    cat "$WORK/err" >&2; exit 1; }
+grep -qi 'invalid value' "$WORK/err" || {
+    echo "an invalid --mode was not reported as an invalid value" >&2
+    cat "$WORK/err" >&2; exit 1; }
+grep -q 'station' "$WORK/err" || {
+    echo "the rejection did not name the valid modes" >&2
+    cat "$WORK/err" >&2; exit 1; }
+
+for mode in station ap; do
+    set +e
+    timeout 20 impala --mode "$mode" >/dev/null 2>"$WORK/err"
+    rc=$?
+    set -e
+    printf '  mode %-8s rc=%s %s\n' "$mode" "$rc" "$(head -1 "$WORK/err" | cut -c1-64)"
+    # It must get PAST argument parsing. It then fails, because iwd is absent,
+    # and that is expected -- what must not happen is a parse rejection.
+    [ "$rc" != 2 ] || {
+        echo "--mode $mode was rejected by argument parsing, but --help documents it" >&2
+        cat "$WORK/err" >&2; exit 1; }
+    grep -qi 'invalid value' "$WORK/err" && {
+        echo "--mode $mode was reported as an invalid value" >&2
+        cat "$WORK/err" >&2; exit 1; }
+done
+
+echo "impala $want enforces its documented interface: station and ap accepted, anything else refused with exit 2. No wifi functionality was exercised."

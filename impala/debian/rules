@@ -1,0 +1,37 @@
+#!/usr/bin/make -f
+
+# Rust's equivalent of Go's -trimpath. Without it the binary embeds the build
+# directory and a rebuild anywhere else produces different bytes.
+export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
+
+# And the registry with it. Cargo unpacks dependency sources under CARGO_HOME,
+# whose default is $HOME/.cargo, and rustc embeds those paths. In-tree, so the
+# remap above covers it.
+export CARGO_HOME := $(CURDIR)/.cargo
+
+# rustc is not a Debian package and so is not in .buildinfo's
+# Installed-Build-Depends; pinning it here puts the version in debian/rules,
+# which ships inside the source package, so a rebuild resolves the same
+# compiler the original did.
+#
+# Upstream ships no rust-toolchain.toml, so without this the build takes
+# whatever stable is current on the day -- a record rather than a pin, and one
+# that stops matching at the next Rust release. Move it with each upstream bump.
+export RUSTUP_TOOLCHAIN := 1.98.1
+
+# Upstream ships .cargo/config.toml naming a musl cross-linker for
+# aarch64-unknown-linux-musl. Both of our architectures build natively against
+# gnu, so that section never matches and needs no handling here.
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	cargo clean
+	rm -rf $(CURDIR)/.cargo
+
+override_dh_auto_build:
+	cargo build --release
+
+override_dh_auto_install:
+	install -Dm0755 target/release/impala debian/impala/usr/bin/impala

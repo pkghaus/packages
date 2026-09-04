@@ -1,0 +1,3 @@
+Tests: parse-config
+Depends: @
+Restrictions: allow-stderr

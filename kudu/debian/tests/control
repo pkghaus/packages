@@ -1,0 +1,13 @@
+Tests: render-host-panel
+# tmux, because script(1) cannot answer kudu's cursor-position query and the
+# TUI refuses to start without an answer.
+#
+# needs-root is not so the program can run as root -- the opposite. kudu only
+# attempts the virbr0 bridge when USER_UID is 0, so it must be run as a normal
+# user or it never draws. Root is needed to CREATE that user and to make
+# /run/user/<uid>, which get_kudu_run_dir() hardcodes for non-root and which
+# nothing else provides in a testbed. Without this restriction autopkgtest runs
+# the test as a normal user whose PATH has no /usr/sbin, and useradd is simply
+# not found.
+Depends: @, tmux, passwd
+Restrictions: needs-root, allow-stderr

@@ -1,0 +1,3 @@
+Tests: cli-contract
+Depends: @
+Restrictions: allow-stderr
