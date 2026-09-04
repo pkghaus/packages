@@ -49,8 +49,9 @@ import json, os, sys
 
 planned = [e["package"] for e in json.loads(os.environ["MATRIX"])]
 # gh api --paginate --slurp returns a list of response objects, one per page;
-# a single call returns the object itself. A bump run is 1 + packages*4 + 1
-# jobs, so 25 packages behind at once would silently lose a page.
+# a single call returns the object itself. A bump run is 1 + packages*7 + 1
+# jobs -- verify is three suites by two architectures, plus one land each -- so
+# a full fleet behind at once is 177, well past a page.
 raw = json.load(sys.stdin)
 pages = raw if isinstance(raw, list) else [raw]
 jobs = [j for page in pages for j in page.get("jobs", [])]
