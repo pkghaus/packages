@@ -4,13 +4,13 @@ Source: https://github.com/lpicanco/i3-autodisplay
 
 Files: *
 Copyright: Copyright © 2019-2021 Luiz Picanço
-License: GPL-3+
+License: GPL-3
 
 Files: debian/*
 Copyright: 2020-2026 pkg.haus archive <archive@pkg.haus>
-License: GPL-3+
+License: GPL-3
 
-License: GPL-3+
+License: GPL-3
  This program is free software; you can redistribute it and/or modify
  it under the terms of the GNU General Public License version 3 as
  published by the Free Software Foundation
