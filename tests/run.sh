@@ -550,6 +550,23 @@ FAKE
     "$dash" "$body" no yes https://run/1 >/dev/null
     eq "an unverified run does not close it either" "0" "$(asked 'issue close')"
 
+    # A failed lookup must abort, not read as "no issue is open". Reading it
+    # that way opens a duplicate dashboard on every run for as long as GitHub
+    # is unreachable, and the duplicates are what a person sees first.
+    reset; printf '### something is wrong\n' > "$body"
+    cat > "$work/bin/gh" <<'BROKEN'
+#!/bin/sh
+printf '%s\n' "$*" >> "$GH_LOG"
+case "$1 $2" in
+    "issue list") echo 'gh: could not connect' >&2; exit 1 ;;
+esac
+exit 0
+BROKEN
+    chmod +x "$work/bin/gh"
+    "$dash" "$body" yes yes https://run/1 >/dev/null 2>&1 && rc=0 || rc=$?
+    eq "an unreadable issue list fails the step" "1" "$rc"
+    eq "and opens no duplicate dashboard" "0" "$(asked 'issue create')"
+
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 
