@@ -13,6 +13,7 @@ act
 actionlint
 berry
 betterlockscreen
+bluetui
 croc
 d2
 difftastic
@@ -21,6 +22,8 @@ fx
 gotypist
 i3-autodisplay
 i3lock-color
+impala
+kudu
 lychee
 mandown
 monolith

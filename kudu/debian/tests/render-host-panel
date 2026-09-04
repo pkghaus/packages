@@ -1,0 +1,160 @@
+#!/bin/bash
+#
+# kudu is a TUI VM manager. It has no subcommands -- usage is literally `kudu` --
+# so everything below the version check has to come from running it.
+#
+# It is reachable in a container, which is not obvious. App::new() creates the
+# virbr0 bridge only under `if USER_UID == 0`, so as root it dies with "Can not
+# create the bridge interface virbr0" and never draws anything. As a non-root
+# user that branch is skipped entirely, and a missing /dev/kvm is not fatal
+# either: get_kvm_version() failing only leaves KVM_ENABLED false. So the test
+# creates a user and drops to it.
+#
+# That user needs /run/user/<uid> to exist. get_kudu_run_dir() hardcodes
+# /run/user/<uid>/kudu for non-root and does not consult XDG_RUNTIME_DIR, so
+# without the directory kudu stops at "Permission denied" before drawing.
+#
+# script(1) is not enough for the pty. kudu asks the terminal for the cursor
+# position (ESC[6n) and script has nothing on the other end to answer, so it
+# fails with "The cursor position could not be read within a normal duration".
+# tmux is a real terminal emulator and replies, hence the Depends.
+#
+# The load-bearing assertion is Memory, not the fact that a screen appeared.
+# kudu reads the host and renders what it found, so requiring the rendered
+# figure to equal the kernel's own MemTotal is what separates probing the
+# machine from printing a constant. CPU follows the cgroup quota rather than
+# nproc -- measured: in a container limited to 2 CPUs, kudu says 2 while nproc
+# says 32 -- so it is asserted as a positive integer rather than an exact match,
+# because reproducing that arithmetic here would be guesswork.
+#
+# The qemu pair is the second half of the same idea: the same binary, two PATHs,
+# two different outcomes. Without it a binary that always drew the same screen
+# would pass.
+#
+# NOTE ON EXIT STATUS: kudu exits 0 on its fatal startup paths. App::new()
+# returning Err leads to `eprintln!` and `return Ok(())`. Nothing here may
+# assert on the exit status of a failed start; the message on stderr is the
+# only witness.
+#
+# What this does NOT prove: that a guest ever boots. That needs /dev/kvm and a
+# machine-isolation testbed. Read a pass as "kudu starts, probes the host
+# correctly and reports it", not "kudu manages VMs".
+
+set -euo pipefail
+
+# useradd and friends live in /usr/sbin, which is not on a normal user's PATH.
+# The test declares needs-root, but say it explicitly rather than depend on
+# root's login PATH being inherited through the harness.
+PATH=/usr/sbin:/sbin:$PATH
+export PATH
+
+[ "$(id -u)" = 0 ] || { echo "this test declares needs-root but is running as $(id -un)" >&2; exit 1; }
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+want="$(dpkg-query -W -f='${Version}' kudu | sed 's/-[^-]*$//')"
+reported="$(kudu --version 2>&1)"
+printf '%s\n' "$reported"
+case "$reported" in
+    *"$want"*) ;;
+    *) echo "kudu --version [$reported] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+# --- a non-root user, because the bridge branch is root-only -----------------
+user=kudutest
+id -u "$user" >/dev/null 2>&1 || useradd -m -s /bin/sh "$user"
+uid="$(id -u "$user")"
+mkdir -p "/run/user/$uid"
+chown "$user" "/run/user/$uid"
+home="$(getent passwd "$user" | cut -d: -f6)"
+
+# The scratch directory belongs to root and the runtime files below are written
+# by the unprivileged user. Without this the redirections fail before kudu is
+# even reached, the session dies instantly and the pane comes back empty -- and
+# the exit-status file cannot be written either, so the check for an early exit
+# cannot fire. It reads exactly like a TUI that drew nothing.
+chmod 0755 "$WORK"
+OUT="$WORK/u"
+mkdir -p "$OUT"
+chown "$user" "$OUT"
+
+as_user() { su "$user" -c "cd $home && $1"; }
+
+# `|| true` is load-bearing. tmux kill-server exits 1 when no server is left,
+# and by the time this runs there usually is none. Under set -e that aborts the
+# function before its `return 0`, and a failing EXIT trap becomes the script's
+# exit status -- so the test reported failure having printed its success line.
+cleanup() { as_user "tmux -f /dev/null kill-server" 2>/dev/null || true; return 0; }
+trap cleanup EXIT
+
+# --- the TUI renders, with qemu present and no /dev/kvm ----------------------
+as_user "tmux -f /dev/null new-session -d -x 110 -y 32 'kudu 2>$OUT/err; echo \$? >$OUT/rc; sleep 30'"
+sleep 6
+
+pane="$WORK/pane.txt"
+as_user "tmux -f /dev/null capture-pane -p" > "$pane" 2>/dev/null || true
+
+if [ -s "$OUT/rc" ]; then
+    echo "kudu exited instead of drawing; stderr follows" >&2
+    cat "$OUT/err" >&2
+    exit 1
+fi
+
+grep -q 'Host' "$pane" || {
+    echo "no Host panel in the rendered screen" >&2
+    echo "--- pane ---" >&2; cat "$pane" >&2
+    echo "--- stderr ---" >&2; cat "$OUT/err" 2>/dev/null >&2
+    exit 1; }
+
+# Memory must equal the kernel's own figure. A constant fails this anywhere.
+want_mem="$(awk '/^MemTotal:/{printf "%d", $2/1024}' /proc/meminfo)"
+got_mem="$(sed -n 's/.*Memory[^0-9]*\([0-9]\+\) MB.*/\1/p' "$pane" | head -1)"
+if [ "$got_mem" != "$want_mem" ]; then
+    echo "kudu rendered Memory [$got_mem] MB, kernel reports [$want_mem] MB" >&2
+    cat "$pane" >&2
+    exit 1
+fi
+
+got_cpu="$(sed -n 's/.*CPU[^0-9]*\([0-9]\+\).*/\1/p' "$pane" | head -1)"
+if ! [ "${got_cpu:-0}" -ge 1 ] 2>/dev/null; then
+    echo "kudu rendered a CPU count of [$got_cpu]" >&2; cat "$pane" >&2; exit 1
+fi
+
+# No /dev/kvm in this testbed, and kudu must say so rather than claim otherwise.
+# "Unavailble" is upstream's spelling; matching on "Disabled" avoids depending
+# on the typo surviving.
+grep -qi 'KVM.*Disabled' "$pane" || {
+    echo "kudu did not report KVM as disabled although /dev/kvm is absent" >&2
+    cat "$pane" >&2; exit 1; }
+
+# --- q quits, and cleanly ----------------------------------------------------
+as_user "tmux -f /dev/null send-keys q" 2>/dev/null || true
+sleep 3
+if [ ! -s "$OUT/rc" ]; then
+    echo "kudu did not exit after q" >&2; exit 1
+fi
+rc="$(cat "$OUT/rc")"
+[ "$rc" = 0 ] || { echo "kudu exited $rc after q, expected 0" >&2; exit 1; }
+as_user "tmux -f /dev/null kill-server" 2>/dev/null || true
+
+# --- the discriminating pair: same binary, qemu removed from PATH ------------
+mkdir -p "$OUT/emptybin"
+chmod 755 "$OUT/emptybin"
+rm -f "$OUT/err2" "$OUT/rc2"
+# The empty PATH applies to kudu alone, not to tmux -- tmux has to stay
+# findable to allocate the terminal. kudu is therefore invoked by absolute
+# path, since it lives in /usr/bin and would not be found either.
+as_user "tmux -f /dev/null new-session -d -x 110 -y 32 'PATH=$OUT/emptybin /usr/bin/kudu 2>$OUT/err2; echo \$? >$OUT/rc2; sleep 15'"
+sleep 5
+as_user "tmux -f /dev/null kill-server" 2>/dev/null || true
+
+grep -qi 'qemu is not installed' "$OUT/err2" || {
+    echo "with qemu off PATH kudu did not report it missing; stderr was:" >&2
+    cat "$OUT/err2" >&2
+    echo "(if this says something else, kudu reached a later check and the pair no longer discriminates)" >&2
+    exit 1
+}
+
+echo "kudu $want rendered the host panel (Memory ${got_mem} MB matching the kernel, CPU ${got_cpu}, KVM disabled), quit cleanly, and reported qemu missing when it was"

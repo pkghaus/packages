@@ -1,0 +1,24 @@
+Source: impala
+Section: net
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ rustup,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://github.com/pythops/impala
+
+Package: impala
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ iwd,
+Description: terminal interface for managing wifi through iwd
+ impala scans, connects to and manages wireless networks from a
+ terminal interface, driving iwd over D-Bus. It supports both station
+ and access-point modes.
+ .
+ iwd must be the active wireless backend: NetworkManager or
+ wpa_supplicant managing the same interface will conflict with it.

@@ -1,0 +1,6 @@
+version=4
+# The version group is (\d[^-]*) and not (\d\S+): \S+ accepts a prerelease
+# suffix, and a tag carries no prerelease flag, so excluding the suffix in the
+# pattern is the only place it can be done.
+opts=filenamemangle=s/.+\/v?(\d\S+)\.tar\.gz/<project>-$1\.tar\.gz/ \
+  https://github.com/pythops/kudu/tags .*/v?(\d[^-]*)\.tar\.gz

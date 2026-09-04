@@ -1,0 +1,26 @@
+Source: bluetui
+Section: comm
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ rustup,
+ libdbus-1-dev,
+ pkgconf,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://github.com/pythops/bluetui
+
+Package: bluetui
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ bluez,
+Description: terminal interface for managing Bluetooth devices
+ bluetui scans, pairs, connects and trusts Bluetooth devices from a
+ terminal interface, driving BlueZ over D-Bus. It covers the common
+ bluetoothctl operations without the interactive prompt.
+ .
+ Keybindings and colours are configurable through a TOML file, whose
+ location can be overridden with --config.

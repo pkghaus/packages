@@ -1,0 +1,85 @@
+#!/bin/bash
+#
+# bluetui drives BlueZ over D-Bus, and BlueZ cannot run in a container:
+# bluetoothd needs the kernel Bluetooth management socket and dies at
+# "Failed to access management interface" before org.bluez ever appears. So the
+# TUI is unreachable here and the test does not try to reach it.
+#
+# What is reachable is --config, and it is a better witness than an error
+# string. bluetui reads the file, parses it, and validates it against its own
+# schema before it goes anywhere near D-Bus, which gives four distinct and
+# deterministic outcomes from four inputs:
+#
+#   missing file   "Config file not found"
+#   invalid TOML   "TOML parse error at line N, column M"
+#   unknown layout "unknown layout variant X" plus the list of valid values
+#   valid file     accepted; it proceeds and fails later, at the terminal
+#
+# The fourth is what makes the other three mean something. A binary that
+# rejected everything would satisfy three of these; only one that actually
+# parses gets past a good file and fails somewhere else.
+#
+# NOTE ON EXIT STATUS: all four exit 1. Nothing here may assert on the status;
+# the message is the only thing that distinguishes them.
+#
+# What this does NOT prove: that bluetui pairs, connects to or lists any
+# device. That needs a Bluetooth controller, which needs a machine-isolation
+# testbed with hci_vhci and btvirt. Read a pass as "bluetui runs and honours
+# its configuration", not "bluetui manages Bluetooth".
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+want="$(dpkg-query -W -f='${Version}' bluetui | sed 's/-[^-]*$//')"
+reported="$(bluetui --version 2>&1)"
+printf '%s\n' "$reported"
+case "$reported" in
+    *"$want"*) ;;
+    *) echo "bluetui --version [$reported] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+bluetui --help 2>&1 | grep -q -- '--config' || {
+    echo "--help does not document --config, which the rest of this test relies on" >&2
+    bluetui --help >&2 || true
+    exit 1
+}
+
+# run <label> <config-path> -> stderr in $out
+out="$WORK/err"
+run() {
+    rm -f "$out"
+    timeout 20 bluetui -c "$2" >/dev/null 2>"$out" || true
+    printf '  %-13s %s\n' "$1" "$(head -2 "$out" | tr '\n' ' ' | cut -c1-90)"
+}
+
+printf 'layout = "SpaceAround"\ntoggle_scanning = "s"\nesc_quit = true\n' > "$WORK/good.toml"
+printf 'layout = "Nonsense"\n'                                            > "$WORK/badlayout.toml"
+printf 'not = valid toml [[[\n'                                           > "$WORK/badsyntax.toml"
+
+run "missing"   "$WORK/absent.toml"
+grep -qi 'config file not found' "$out" || {
+    echo "a missing config was not reported as not found" >&2; cat "$out" >&2; exit 1; }
+
+run "badsyntax" "$WORK/badsyntax.toml"
+grep -qi 'toml parse error' "$out" || {
+    echo "invalid TOML was not reported as a parse error" >&2; cat "$out" >&2; exit 1; }
+
+run "badlayout" "$WORK/badlayout.toml"
+grep -qi 'unknown layout variant' "$out" || {
+    echo "an unknown layout value was not rejected" >&2; cat "$out" >&2; exit 1; }
+grep -qi 'SpaceAround' "$out" || {
+    echo "the rejection did not list the valid layout values" >&2; cat "$out" >&2; exit 1; }
+
+# The discriminating one. A good config has to get PAST configuration; with no
+# terminal and no D-Bus it then fails, and that later failure is the evidence.
+run "good"      "$WORK/good.toml"
+if grep -qiE 'config file not found|toml parse error|unknown layout variant' "$out"; then
+    echo "a valid config was rejected as if it were malformed" >&2
+    cat "$out" >&2
+    exit 1
+fi
+
+echo "bluetui $want reported a missing config, a syntax error and an invalid layout distinctly, and accepted a valid one"
