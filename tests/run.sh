@@ -207,6 +207,21 @@ FAKE
     chmod +x "$bin/gh"
     export ASKED="$log"
 
+    # A curl that answers per the env, matching the contract the real call
+    # relies on: the body, a newline, then the HTTP status appended by
+    # -w '\n%{http_code}'. The suite had no curl stub at all, so the entire
+    # non-gh branch was only ever exercised by pointing API_BASE at a dead
+    # port -- which tests the failure path and nothing else.
+    cat > "$bin/curl" <<'FAKE'
+#!/bin/sh
+for a in "$@"; do case "$a" in http*) url="$a" ;; esac; done
+printf '%s\n' "curl $url" >> "$ASKED"
+[ "${CURL_FAIL:-0}" = 1 ] && exit 7
+printf '%s\n%s' "${CURL_BODY:-}" "${CURL_STATUS:-200}"
+exit 0
+FAKE
+    chmod +x "$bin/curl"
+
     cat > "$bin/git" <<'FAKE'
 #!/bin/sh
 printf '%s\n' "ls-remote $*" >> "$ASKED"
@@ -279,6 +294,55 @@ FAKE
     GIT_FAIL=0 GIT_REFS="$refs"
     eq "the fixture really has 120 lines" "120" "$(printf '%s\n' "$refs" | wc -l)"
     eq "the newest tag is found past the old 100-item page" "v9.9.9" "$(latest_tag x/y)"
+
+    # --- a second forge --------------------------------------------------
+    # Codeberg runs Forgejo. gh cannot speak to it, so the gh stub must NOT be
+    # consulted, and both the API base and the clone URL have to follow the
+    # host. Verified against the real service on 2026-09-06: ziglang/zig has no
+    # releases (404, resolves through the tag list) and fairyglade/ly answers
+    # 200 with tag_name v1.4.1.
+    # API_BASE unset here so forge_api_base supplies the real Codeberg base and
+    # the assertion below can see it; the curl stub answers, so nothing leaves
+    # the machine.
+    : > "$log"
+    ( unset API_BASE
+      GIT_FAIL=0 GIT_REFS="$(printf 'a\trefs/tags/0.15.2\nb\trefs/tags/0.16.0\n')"
+      export GIT_FAIL GIT_REFS
+      # 404: zig publishes tags and no releases, so the tag list is the answer.
+      CURL_STATUS=404 CURL_BODY='{"message":"The target could not be found."}' \
+        eq "a Codeberg project with no releases resolves from its tag list" "0.16.0" \
+           "$(CURL_STATUS=404 latest_tag ziglang/zig codeberg.org)"
+      eq "  gh was NOT asked (it speaks GitHub only)" "0" "$(grep -c '^repos/' "$log")"
+      eq "  the API call went to the Forgejo base" "1" \
+         "$(grep -c 'curl https://codeberg.org/api/v1/repos/ziglang/zig/releases/latest' "$log")"
+      eq "  the clone URL followed the host" "1" \
+         "$(grep -c 'ls-remote --tags https://codeberg.org/ziglang/zig' "$log")"
+
+      # And a Codeberg project that DOES publish releases resolves from them,
+      # without touching the tag list. fairyglade/ly answers exactly this.
+      : > "$log"
+      out="$(CURL_STATUS=200 CURL_BODY='{"tag_name":"v1.4.1"}' latest_tag fairyglade/ly codeberg.org)"
+      eq "a Codeberg release resolves from releases/latest" "v1.4.1" "$out"
+      eq "  and the tag list was not consulted" "0" "$(grep -c 'ls-remote' "$log")"
+    )
+
+    # The default is unchanged, which is what keeps every existing caller and
+    # every test above honest.
+    : > "$log"
+    GH_404_PATH="releases/latest" GH_FAIL_PATH="__none__"
+    latest_tag x/y >/dev/null 2>&1 || true
+    eq "an omitted host still means github.com" "1" \
+        "$(grep -c 'ls-remote --tags https://github.com/x/y' "$log")"
+
+    # An unknown forge must refuse rather than fall back to GitHub's API: a
+    # wrong base URL 404s on every path, and this file reads 404 as "absent",
+    # which would report a real package as having no upstream release at all.
+    out="$(forge_api_base git.example.invalid 2>/dev/null)" && rc=0 || rc=$?
+    eq "an unknown forge is a failure, not a guess" "1" "$rc"
+    eq "  and yields no base URL" "" "$out"
+
+    eq "github.com maps to the API host" "https://api.github.com" "$(forge_api_base github.com)"
+    eq "codeberg.org maps to its Forgejo base" "https://codeberg.org/api/v1" "$(forge_api_base codeberg.org)"
 
     # Peel lines are the dereferenced commits of annotated tags. Left in they
     # duplicate every annotated tag, and `v2.0.0^{}` sorts above `v2.0.0`.
