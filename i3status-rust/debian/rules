@@ -1,5 +1,11 @@
 #!/usr/bin/make -f
 
+# DEB_VERSION_UPSTREAM and friends. Without this the variable expands to the
+# empty string, which is worse than an error: the version assertion below
+# becomes `grep -qF ''`, matches anything, and passes while testing nothing.
+# 0.36.1-1 shipped with it missing and the assertion green.
+include /usr/share/dpkg/pkg-info.mk
+
 # Rust's equivalent of Go's -trimpath. Without it the binary embeds the build
 # directory and a rebuild anywhere else produces different bytes.
 #
@@ -30,6 +36,21 @@ export CARGO_HOME := $(CURDIR)/.cargo-home
 # The floor is 1.85: Cargo.toml declares edition 2024.
 export RUSTUP_TOOLCHAIN := 1.98.1
 
+# build.rs derives the --version string by shelling out to `git rev-parse` and
+# `git log`. The builder deletes the clone's .git before building, so both run
+# against a tree with no repository -- and Command::output() returns Ok when git
+# merely FAILS, it errors only when the binary cannot be spawned. Upstream's
+# clean fallback (plain CARGO_PKG_VERSION) is therefore never reached, and the
+# binary stamps "0.36.1 (commit  )" with two empty fields. 0.36.1-1 shipped
+# exactly that.
+#
+# From the source package, not from git: action-debian-build >= v1.6.0 writes
+# the revision it cloned to debian/upstream-commit, which ships inside the .dsc,
+# and the date comes from SOURCE_DATE_EPOCH, which dpkg records in .buildinfo's
+# Environment. Both are things a rebuilder replays, so the string reproduces.
+I3S_COMMIT := $(shell cut -c1-9 debian/upstream-commit 2>/dev/null)
+I3S_DATE := $(shell date -u -d @$(SOURCE_DATE_EPOCH) +%Y-%m-%d)
+
 %:
 	dh $@
 
@@ -39,6 +60,21 @@ override_dh_auto_clean:
 
 # A two-member workspace (`.` and `xtask`), so the binary needs naming or cargo
 # builds the helper too. Same shape as lychee.
+# Replaced rather than patched: the whole file is the git lookup, and the two
+# values it wants are already in the source package.
+execute_before_dh_auto_build:
+	# Both inputs asserted non-empty BEFORE they are used. An empty one does not
+	# announce itself downstream: it turns the `grep -qF` checks below into
+	# `grep -qF ''`, which matches every line and passes. That is how 0.36.1-1
+	# shipped an empty commit field behind a green build.
+	test -n '$(I3S_COMMIT)'
+	test -n '$(DEB_VERSION_UPSTREAM)'
+	test -n '$(I3S_DATE)'
+	printf 'fn main() {\n    println!("cargo:rustc-env=VERSION=%s (commit %s %s)");\n}\n' \
+		'$(DEB_VERSION_UPSTREAM)' '$(I3S_COMMIT)' '$(I3S_DATE)' > build.rs
+	grep -qF '$(I3S_COMMIT)' build.rs
+	! grep -qF 'rev-parse' build.rs
+
 override_dh_auto_build:
 	cargo build --release -p i3status-rs
 	# Upstream generates its own man page rather than shipping one. It writes
@@ -61,6 +97,11 @@ override_dh_auto_build:
 	# The version is stamped from Cargo.toml at compile time, so a mismatch
 	# here means the tree is not the tag package.conf names.
 	./target/release/i3status-rs --version | grep -qF '$(DEB_VERSION_UPSTREAM)'
+	# And that the commit actually landed. The version alone passed on 0.36.1-1
+	# while the commit field was two spaces, so asserting the version is not
+	# enough to catch this class of bug.
+	./target/release/i3status-rs --version | grep -qF '$(I3S_COMMIT)'
+	! ./target/release/i3status-rs --version | grep -qE 'commit +\)'
 
 override_dh_auto_install:
 	install -Dm0755 target/release/i3status-rs \
