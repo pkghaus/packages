@@ -1,0 +1,35 @@
+Source: i3status-rust
+Section: x11
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ libpulse-dev,
+ libsensors-dev,
+ libssl-dev,
+ pandoc,
+ pkgconf,
+ rustup,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://github.com/greshake/i3status-rust
+
+Package: i3status-rust
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Recommends: fonts-font-awesome
+Description: resource-friendly status bar generator for i3 and sway
+ i3status-rust feeds a status line to i3bar or swaybar: it emits a stream of
+ JSON blocks on standard output, one update per block per interval, and the
+ bar renders them. It replaces i3status, with a block set that covers CPU,
+ memory, disk, network, battery, weather, music and a good deal more.
+ .
+ Blocks are configured rather than scripted. Each one is a TOML table naming
+ the block type and its options, so a status line is a single config file with
+ no shell loop behind it, and the daemon updates each block on its own
+ schedule rather than repainting everything on a timer.
+ .
+ The icon and theme sets are installed to /usr/share/i3status-rust and are
+ selected by name from the configuration.

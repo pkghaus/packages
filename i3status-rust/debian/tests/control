@@ -1,0 +1,6 @@
+Tests: render-status-line
+# No tmux: i3status-rs is not a TUI. It writes the i3bar JSON protocol to
+# stdout for a bar to consume, so a plain redirect captures exactly what the
+# program is for.
+Depends: @
+Restrictions: allow-stderr
