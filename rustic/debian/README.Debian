@@ -1,0 +1,19 @@
+rustic for Debian
+-----------------
+
+This package ships no configuration file. rustic takes its options from TOML
+profiles, which it looks for in ~/.config/rustic/ and in the global directory
+/etc/rustic/.
+
+Upstream's profiles are installed as examples, with the specification that
+describes them:
+
+  /usr/share/doc/rustic/examples/
+
+simple.toml is the one to start from; full.toml documents every option.
+
+Nothing is installed into /etc/rustic/: a profile shipped there would be a dpkg
+conffile, tracked and prompted about on every upgrade that changed it. A
+profile you create there is yours and dpkg will not touch it.
+
+ -- pkg.haus archive <archive@pkg.haus>

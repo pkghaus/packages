@@ -1,0 +1,15 @@
+lychee for Debian
+-----------------
+
+This package ships no configuration file. lychee runs with built-in defaults
+and reads lychee.toml from the working directory, or whatever --config names.
+
+An annotated example is installed at
+
+  /usr/share/doc/lychee/examples/lychee.example.toml
+
+Copy it to lychee.toml beside the files you are checking, or pass it with
+--config. Nothing is placed in /etc: a file there would be a dpkg conffile,
+prompted about on upgrade, for a program that does not look there.
+
+ -- pkg.haus archive <archive@pkg.haus>
