@@ -1,0 +1,53 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+# Rust's equivalent of Go's -trimpath. Without it the binary embeds the build
+# directory and a rebuild anywhere else produces different bytes.
+export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
+
+# And the registry with it. Cargo unpacks dependency sources under CARGO_HOME,
+# whose default is $HOME/.cargo, and rustc embeds those paths. In-tree, so the
+# remap above covers it.
+export CARGO_HOME := $(CURDIR)/.cargo
+
+# rustc is not a Debian package and so is not in .buildinfo's
+# Installed-Build-Depends; pinning it here puts the version in debian/rules,
+# which ships inside the source package, so a rebuild resolves the same
+# compiler the original did.
+#
+# Upstream ships no rust-toolchain.toml, so without this the build takes
+# whatever stable is current on the day -- a record rather than a pin, and one
+# that stops matching at the next Rust release. Move it with each upstream bump.
+export RUSTUP_TOOLCHAIN := 1.98.1
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	cargo clean
+	rm -rf $(CURDIR)/.cargo
+
+override_dh_auto_build:
+	cargo build --release
+	# gitu prints its version from git_version!(cargo_suffix = ""), which reads
+	# git describe at COMPILE time. The source package has no .git, so this
+	# falls back to the Cargo.toml version -- upstream added that fallback
+	# deliberately, for `cargo install`. Asserted rather than trusted: removing
+	# .git is exactly what shipped a wrong version string in berry, viddy and
+	# vegeta, and the failure is silent in all four cases.
+	@echo "gitu reports: $$(./target/release/gitu --version)"
+	./target/release/gitu --version | grep -qF '$(DEB_VERSION_UPSTREAM)'
+	# No completions are generated: v0.43.0 has no subcommand for them. The
+	# `gitu completion <shell>` interface exists on master and was added AFTER
+	# this release, so reading the default branch says the opposite of what the
+	# tag we build actually supports. Revisit at the bump that first ships it.
+
+# Upstream ships a Makefile, so dh runs `make test`, which is the insta
+# snapshot suite and needs cargo-insta -- a dev tool the archive does not carry.
+# Function is covered by the DEP-8 test instead, which drives the real TUI and
+# lets git judge whether it staged anything.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 target/release/gitu debian/gitu/usr/bin/gitu

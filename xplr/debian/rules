@@ -1,0 +1,72 @@
+#!/usr/bin/make -f
+
+# Rust's equivalent of Go's -trimpath. Without it the binary embeds the build
+# directory and a rebuild anywhere else produces different bytes.
+#
+# -rdynamic is upstream's, not ours, and it is load-bearing: xplr's Lua runtime
+# resolves symbols back into the executable, and without an exported dynamic
+# symbol table the plugin surface breaks at runtime rather than at build time
+# (upstream issue #309). It lives in upstream's .cargo/config.toml, which is the
+# problem -- a RUSTFLAGS environment variable REPLACES `target.*.rustflags`
+# rather than appending to it, so setting the remap alone would silently drop
+# the flag and ship a binary that builds clean and misbehaves later.
+#
+# Dropping the rest of that file is deliberate and is the other half of why this
+# is set here. Upstream's `[target.aarch64-unknown-linux-gnu]` section names the
+# CROSS linker `aarch64-linux-gnu-gcc`, and that triple is exactly what we build
+# NATIVELY on the arm64 leg. Letting it apply would make the arm64 build depend
+# on a cross-toolchain it has no reason to carry.
+export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=. -C link-args=-rdynamic
+
+# And the registry with it. Cargo unpacks dependency sources under CARGO_HOME,
+# whose default is $HOME/.cargo, and rustc embeds those paths. In-tree, so the
+# remap above covers it.
+export CARGO_HOME := $(CURDIR)/.cargo
+
+# rustc is not a Debian package and so is not in .buildinfo's
+# Installed-Build-Depends; pinning it here puts the version in debian/rules,
+# which ships inside the source package, so a rebuild resolves the same
+# compiler the original did.
+#
+# Upstream ships no rust-toolchain.toml, so without this the build takes
+# whatever stable is current on the day -- a record rather than a pin, and one
+# that stops matching at the next Rust release. Move it with each upstream bump.
+export RUSTUP_TOOLCHAIN := 1.98.1
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	cargo clean
+	rm -rf $(CURDIR)/.cargo
+
+# The Lua binding vendors and builds LuaJIT from the C sources in the crate, so
+# the build needs a C compiler but no lua development package, and the result
+# depends on nothing outside the source tree.
+override_dh_auto_build:
+	cargo build --release
+	# Assert -rdynamic survived, because a silent drop is invisible until a
+	# user's Lua configuration fails to resolve a symbol at runtime. Without it
+	# the dynamic symbol table carries only imports; with it the executable
+	# exports its own symbols too, which is thousands rather than none.
+	@echo "exported dynamic symbols: $$(nm -D --defined-only target/release/xplr | wc -l)"
+	test "$$(nm -D --defined-only target/release/xplr | wc -l)" -gt 100
+
+override_dh_auto_install:
+	install -Dm0755 target/release/xplr debian/xplr/usr/bin/xplr
+	# Upstream's desktop entry declares MimeType=inode/directory but an Exec
+	# with no field code, so a file manager asking xplr to open a directory
+	# would launch it on the wrong one. xplr takes a PATH argument
+	# ("xplr [FLAG]... [OPTION]... [PATH]"), so %f is the fix rather than a
+	# workaround. Asserted, because a silent no-op here restores the bug.
+	install -Dm0644 assets/desktop/xplr.desktop \
+		debian/xplr/usr/share/applications/xplr.desktop
+	sed -i 's|^Exec=xplr$$|Exec=xplr %f|' \
+		debian/xplr/usr/share/applications/xplr.desktop
+	grep -qx 'Exec=xplr %f' debian/xplr/usr/share/applications/xplr.desktop
+	install -Dm0644 assets/icon/xplr.svg \
+		debian/xplr/usr/share/icons/hicolor/scalable/apps/xplr.svg
+	for s in 16 32 64 128; do \
+		install -Dm0644 assets/icon/xplr$$s.png \
+			debian/xplr/usr/share/icons/hicolor/$${s}x$${s}/apps/xplr.png; \
+	done

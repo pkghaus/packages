@@ -1,0 +1,13 @@
+gitu for Debian
+---------------
+
+This package ships no configuration file. gitu has its defaults compiled in, so
+there is nothing in /etc for dpkg to track and nothing to merge on upgrade.
+
+To customise it, copy the shipped example and edit your copy:
+
+  /usr/share/doc/gitu/examples/default_config.toml
+
+to ~/.config/gitu/config.toml.
+
+ -- pkg.haus archive <archive@pkg.haus>

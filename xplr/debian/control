@@ -1,0 +1,24 @@
+Source: xplr
+Section: utils
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ rustup,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://github.com/sayanarijit/xplr
+
+Package: xplr
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: hackable, minimal, fast TUI file explorer
+ xplr browses the filesystem from a terminal interface, and is built to be
+ wired into other tools: every action can be scripted in Lua, and it prints
+ its result to standard output so a shell function can act on the selection.
+ .
+ It ships no file operations of its own beyond navigation and selection.
+ Copying, moving and deleting are done by the messages a configuration sends,
+ which is what makes it small and what makes it worth configuring.
