@@ -1,0 +1,16 @@
+betterlockscreen for Debian
+---------------------------
+
+This package ships no configuration file. betterlockscreen reads
+$XDG_CONFIG_HOME/betterlockscreenrc (usually ~/.config/betterlockscreenrc) and
+falls back to /etc/betterlockscreenrc, and works with neither present.
+
+Upstream's annotated example is installed at
+
+  /usr/share/doc/betterlockscreen/examples/betterlockscreenrc
+
+Copy it to one of those two paths and edit your copy. Nothing is installed into
+/etc: a file shipped there would be a dpkg conffile, prompted about on every
+upgrade that changed it. One you create is yours.
+
+ -- pkg.haus archive <archive@pkg.haus>

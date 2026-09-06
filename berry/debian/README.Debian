@@ -1,0 +1,18 @@
+berry for Debian
+----------------
+
+This package ships no configuration. berry is configured by an executable
+autostart script, which it looks for at berry/autostart inside the XDG config
+directory (usually ~/.config/berry/autostart), and it runs with compiled-in
+defaults when that is absent.
+
+Upstream's examples are installed at
+
+  /usr/share/doc/berry/examples/autostart
+  /usr/share/doc/berry/examples/sxhkdrc
+
+Copy autostart to ~/.config/berry/autostart and make it executable. sxhkdrc is
+for sxhkd, which berry does not depend on and which binds the keys that call
+berryc.
+
+ -- pkg.haus archive <archive@pkg.haus>
