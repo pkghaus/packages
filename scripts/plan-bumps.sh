@@ -35,7 +35,7 @@ is_native() {
 # The loop is a function so tests can source this file and override latest_tag.
 # Everything above is definitions, everything below runs.
 plan() {
-    local rows="" pkg conf ours upstream_url slug newest
+    local rows="" pkg conf ours upstream_url host slug newest
     while read -r pkg; do
         case "$pkg" in ''|\#*) continue ;; esac
         pkg="${pkg%%[[:space:]]*}"
@@ -46,14 +46,25 @@ plan() {
 
         ours="$(sed -n 's/^VERSION=//p' "$conf" | head -n1)"
         upstream_url="$(sed -n 's/^UPSTREAM=//p' "$conf" | head -n1)"
-        slug="${upstream_url#https://github.com/}"
+        # Host and slug, rather than stripping one hardcoded prefix. The old
+        # form left a Codeberg URL intact, so the "slug" was the whole URL, the
+        # API path became repos/https://codeberg.org/o/r/releases/latest, and
+        # the package reported no upstream release forever without erroring.
+        # That silence is part of why ly was written off as unpackageable.
+        host="${upstream_url#https://}"
+        host="${host%%/*}"
+        slug="${upstream_url#https://"$host"/}"
         slug="${slug%.git}"
+        [ -n "$host" ] && [ "$host" != "$upstream_url" ] || {
+            printf 'SKIP %s: cannot read a host out of UPSTREAM=%s\n' "$pkg" "$upstream_url" >&2
+            continue
+        }
         [ -n "$ours" ] && [ -n "$slug" ] || { printf 'SKIP %s: package.conf incomplete\n' "$pkg" >&2; continue; }
 
         # A lookup that fails is not a package that is current. Reported and
         # skipped rather than silently treated as up to date.
-        newest="$(latest_tag "$slug" || true)"
-        [ -n "$newest" ] || { printf 'SKIP %s: no release or tag found for %s\n' "$pkg" "$slug" >&2; continue; }
+        newest="$(latest_tag "$slug" "$host" || true)"
+        [ -n "$newest" ] || { printf 'SKIP %s: no release or tag found for %s/%s\n' "$pkg" "$host" "$slug" >&2; continue; }
         [ "$ours" != "$newest" ] || continue
 
         rows="$rows,{\"package\":\"$(json_escape "$pkg")\",\"tag\":\"$(json_escape "$newest")\"}"

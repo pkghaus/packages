@@ -52,10 +52,33 @@
 # it, so a flag on that call would never fire where it matters.
 UPSTREAM_ATTEMPTS="${UPSTREAM_ATTEMPTS:-3}"
 
+# Which forge a package lives on. Everything below takes an optional host that
+# defaults to github.com, so every existing caller and test is unchanged.
+#
+# Codeberg runs Forgejo, whose REST API is GitHub-shaped for the only two
+# things this file asks of it: releases/latest returns a {"tag_name": ...}
+# body, and a project with no releases answers 404. So only the base URL and
+# the client change; the parsing and the 0/3/1 contract do not. Verified
+# 2026-09-06 against codeberg.org/ziglang/zig (404 -- zig publishes tags and no
+# releases, so it resolves through the tag-list fallback) and
+# codeberg.org/fairyglade/ly (200, tag_name v1.4.1).
+#
+# An unknown host is a hard failure rather than a guess at GitHub's API: a
+# wrong base URL would 404 on every path, which this file is careful to read as
+# "absent" rather than "could not ask", and that would report a package as
+# having no upstream release at all.
+forge_api_base() {
+    case "$1" in
+        github.com)   printf 'https://api.github.com' ;;
+        codeberg.org) printf 'https://codeberg.org/api/v1' ;;
+        *)            printf 'upstream: unknown forge host %s\n' "$1" >&2; return 1 ;;
+    esac
+}
+
 api() {
-    local path="$1" attempt=1 delay=2 rc
+    local path="$1" host="${2:-github.com}" attempt=1 delay=2 rc
     while true; do
-        if _api_once "$path"; then
+        if _api_once "$path" "$host"; then
             return 0
         else
             rc=$?
@@ -72,10 +95,11 @@ api() {
 }
 
 _api_once() {
-    local path="$1" body errfile rc status
+    local path="$1" host="${2:-github.com}" body errfile rc status base
     local -a auth=()
 
-    if command -v gh >/dev/null 2>&1; then
+    # gh speaks GitHub and nothing else, so it is skipped for any other forge.
+    if [ "$host" = github.com ] && command -v gh >/dev/null 2>&1; then
         errfile="$(mktemp)"
         if body="$(gh api "$path" 2>"$errfile")"; then
             rm -f "$errfile"
@@ -98,9 +122,16 @@ _api_once() {
 
     # No -f here on purpose: the status IS the answer, and -f discards it along
     # with the body. -w appends it, so one call yields both.
-    body="$(curl -sS --connect-timeout 10 --max-time 30 \
-        "${auth[@]}" -H "Accept: application/vnd.github+json" \
-        -w '\n%{http_code}' "$API_BASE/$path" 2>/dev/null)" || return 1
+    # API_BASE stays an override so the tests can point this at a dead port,
+    # but it now has a real default. It had none: the variable was referenced
+    # and never set anywhere in the repository, so this branch only ever worked
+    # under the tests that export it. On a runner without gh it would have
+    # requested "/repos/..." with no host at all.
+    base="${API_BASE:-$(forge_api_base "$host")}" || return 1
+
+    body="$(curl -sSL --connect-timeout 10 --max-time 30 \
+        "${auth[@]}" -H "Accept: application/json" \
+        -w '\n%{http_code}' "$base/$path" 2>/dev/null)" || return 1
 
     status="${body##*$'\n'}"
     body="${body%$'\n'*}"
@@ -140,9 +171,9 @@ json_field() {
 # filters everything away, which turns a repository with no tags into a read
 # failure under pipefail.
 upstream_tags() {
-    local repo="$1" refs
+    local repo="$1" host="${2:-github.com}" refs
     refs="$(GIT_TERMINAL_PROMPT=0 git ls-remote --tags \
-        "https://github.com/$repo" 2>/dev/null)" || return 1
+        "https://$host/$repo" 2>/dev/null)" || return 1
 
     printf '%s\n' "$refs" | awk '
         $2 !~ /\^\{\}$/ { sub(/^refs\/tags\//, "", $2); if ($2 != "") print $2 }'
@@ -156,9 +187,9 @@ upstream_tags() {
 # fall back to the tag list, sorted properly rather than trusting the
 # API's unspecified ordering.
 latest_tag() {
-    local repo="$1" body tag rc
+    local repo="$1" host="${2:-github.com}" body tag rc
 
-    body="$(api "repos/$repo/releases/latest")" && rc=0 || rc=$?
+    body="$(api "repos/$repo/releases/latest" "$host")" && rc=0 || rc=$?
     case "$rc" in
         0)
             tag="$(printf '%s' "$body" | json_field tag_name '.tag_name')"
@@ -178,7 +209,7 @@ latest_tag() {
     esac
 
     local tags
-    tags="$(upstream_tags "$repo")" || {
+    tags="$(upstream_tags "$repo" "$host")" || {
         printf 'upstream: cannot read the tag list for %s\n' "$repo" >&2
         return 1
     }
