@@ -1,0 +1,80 @@
+#!/usr/bin/make -f
+
+# Rust's equivalent of Go's -trimpath. Without it the binary embeds the build
+# directory and a rebuild anywhere else produces different bytes.
+#
+# Unlike xplr, upstream's .cargo/config.toml carries no `target.*.rustflags` --
+# it defines the `xtask` alias and nothing else -- so setting RUSTFLAGS here
+# replaces nothing and drops no upstream flag. Checked at v0.36.1; re-check on
+# an upstream bump, because the replace-not-append behaviour makes a new
+# rustflags line in that file silently disappear.
+export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
+
+# Cargo unpacks dependency sources under CARGO_HOME, whose default is
+# $HOME/.cargo, and rustc embeds those paths. In-tree, so the remap covers it.
+#
+# NOT $(CURDIR)/.cargo, which is the estate's usual spelling: upstream keeps its
+# own .cargo/config.toml there (it defines the `xtask` alias), and pointing
+# CARGO_HOME at that directory makes the clean target delete an upstream source
+# file. The failure surfaces two steps later as `no such command: xtask`.
+export CARGO_HOME := $(CURDIR)/.cargo-home
+
+# rustc is not a Debian package and so is not in .buildinfo's
+# Installed-Build-Depends; pinning it here puts the version in debian/rules,
+# which ships inside the source package, so a rebuild resolves the same
+# compiler the original did.
+#
+# Upstream ships no rust-toolchain.toml, so without this the build takes
+# whatever stable is current on the day -- a record rather than a pin, and one
+# that stops matching at the next Rust release. Move it with each upstream bump.
+# The floor is 1.85: Cargo.toml declares edition 2024.
+export RUSTUP_TOOLCHAIN := 1.98.1
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	cargo clean
+	rm -rf $(CURDIR)/.cargo-home $(CURDIR)/man
+
+# A two-member workspace (`.` and `xtask`), so the binary needs naming or cargo
+# builds the helper too. Same shape as lychee.
+override_dh_auto_build:
+	cargo build --release -p i3status-rs
+	# Upstream generates its own man page rather than shipping one. It writes
+	# to man/i3status-rs.1 relative to the workspace root. Spelled out rather
+	# than as `cargo xtask`, which is an alias in upstream's .cargo/config.toml:
+	# the explicit form cannot break if that file moves or the alias is renamed.
+	cargo run --quiet --release --package xtask -- generate-manpage
+	test -s man/i3status-rs.1
+	# The generated page is 122 tbl tables deep (one per block's option list)
+	# and declares no preprocessor, so man renders every one of them as garbage.
+	# lintian catches it as groff-message "tbl preprocessor failed". A page asks
+	# for tbl with a "'\" t" first line; it lives in debian/ as a file because
+	# spelling that literal through make and sh quoting is how it gets corrupted.
+	cat debian/man-preprocessor-line man/i3status-rs.1 > man/i3status-rs.1.new
+	mv man/i3status-rs.1.new man/i3status-rs.1
+	# No process substitution: make runs recipes under /bin/sh, not bash.
+	head -n 1 man/i3status-rs.1 > man/first-line
+	cmp -s debian/man-preprocessor-line man/first-line
+	test "$$(grep -c '^\.TS' man/i3status-rs.1)" -gt 100
+	# The version is stamped from Cargo.toml at compile time, so a mismatch
+	# here means the tree is not the tag package.conf names.
+	./target/release/i3status-rs --version | grep -qF '$(DEB_VERSION_UPSTREAM)'
+
+override_dh_auto_install:
+	install -Dm0755 target/release/i3status-rs \
+		debian/i3status-rust/usr/bin/i3status-rs
+	install -Dm0644 man/i3status-rs.1 \
+		debian/i3status-rust/usr/share/man/man1/i3status-rs.1
+	# src/util.rs hardcodes /usr/share/i3status-rust as the last search path
+	# for icon and theme sets, after $XDG_CONFIG_HOME and $XDG_DATA_HOME. The
+	# subdirectory names are the ones the config refers to sets by, so these
+	# two directories are an interface, not a layout choice.
+	install -dm0755 debian/i3status-rust/usr/share/i3status-rust
+	cp -r files/icons files/themes \
+		debian/i3status-rust/usr/share/i3status-rust/
+	# Assert the sets arrived: a config naming a missing theme fails at
+	# runtime, not at build time.
+	test "$$(ls debian/i3status-rust/usr/share/i3status-rust/themes/*.toml | wc -l)" -ge 15
+	test "$$(ls debian/i3status-rust/usr/share/i3status-rust/icons/*.toml | wc -l)" -ge 5

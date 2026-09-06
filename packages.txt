@@ -24,6 +24,7 @@ gotypist
 hl
 i3-autodisplay
 i3lock-color
+i3status-rust
 impala
 kudu
 lychee

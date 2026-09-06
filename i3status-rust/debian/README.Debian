@@ -1,0 +1,28 @@
+i3status-rust for Debian
+------------------------
+
+This package ships no configuration file. i3status-rs has no defaults to fall
+back on -- it needs a config to know which blocks to render -- but the config
+is per-user, so there is nothing in /etc for dpkg to track and nothing to merge
+on upgrade.
+
+To get started, copy the shipped example and edit your copy:
+
+  /usr/share/doc/i3status-rust/examples/config.toml
+
+to ~/.config/i3status-rust/config.toml, then point i3 at it:
+
+  bar {
+      status_command i3status-rs ~/.config/i3status-rust/config.toml
+  }
+
+The icon and theme sets are installed to /usr/share/i3status-rust and are
+selected by name in the config's [icons] and [theme] tables. A set of the same
+name under ~/.config/i3status-rust or ~/.local/share/i3status-rust takes
+precedence, so a custom theme does not have to replace the packaged one.
+
+Most icon sets use glyphs from a Nerd Font or Font Awesome. The Recommends on
+fonts-font-awesome covers the "awesome*" sets; the "material-nf" set needs a
+patched Nerd Font, which Debian does not package.
+
+ -- pkg.haus archive <archive@pkg.haus>

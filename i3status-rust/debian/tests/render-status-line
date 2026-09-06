@@ -1,0 +1,83 @@
+#!/bin/sh
+# i3status-rs generates a status line for i3bar: it reads a TOML config, runs
+# each configured block, and streams the i3bar JSON protocol on stdout. This
+# drives that whole path -- config parse, block execution, theme lookup,
+# rendering, protocol emission -- rather than checking the binary starts.
+set -eu
+
+: "${AUTOPKGTEST_TMP:?}"
+
+# HOME inside the testbed, so $XDG_CONFIG_HOME and $XDG_DATA_HOME resolve under
+# it and cannot shadow the packaged icon and theme sets. That shadowing is the
+# documented lookup order (src/util.rs), so leaving HOME alone would make the
+# test's subject ambiguous.
+HOME="$AUTOPKGTEST_TMP/home"
+export HOME
+mkdir -p "$HOME"
+
+cfg="$AUTOPKGTEST_TMP/config.toml"
+cat > "$cfg" <<'EOF'
+[theme]
+theme = "gruvbox-dark"
+
+[icons]
+icons = "emoji"
+
+[[block]]
+block = "custom"
+command = "echo '{\"icon\":\"bat_charging\",\"text\":\"pkghaus-dep8-marker\"}'"
+json = true
+interval = "once"
+EOF
+
+out="$AUTOPKGTEST_TMP/out"
+err="$AUTOPKGTEST_TMP/err"
+
+# It streams until killed, so the timeout is the normal exit path, not a
+# failure. Everything is asserted on what it emitted before then.
+timeout 20 i3status-rs "$cfg" > "$out" 2> "$err" || true
+
+echo "--- stdout:"; cat "$out"
+echo "--- stderr:"; cat "$err"
+
+# 1. The i3bar protocol header, then the opening bracket of the infinite array.
+head -n 1 "$out" | grep -q '"version": 1'
+head -n 1 "$out" | grep -q '"click_events": true'
+sed -n '2p' "$out" | grep -qx '\['
+
+# 2. The custom block actually ran its command and the output reached the
+#    rendered JSON. This is the end-to-end claim: config -> block -> render.
+grep -q 'pkghaus-dep8-marker' "$out"
+
+# 3. The theme was resolved from /usr/share/i3status-rust/themes and applied.
+#    #ebdbb2 is gruvbox-dark's foreground; the default theme (plain) uses
+#    #93a1a1, so this fails both if the theme files are missing from the
+#    package and if the named theme was silently ignored.
+grep -qi '#ebdbb2' "$out"
+
+# 4. The icon set was resolved from /usr/share/i3status-rust/icons and applied.
+#    The emoji set is the only one of the six whose glyphs are ordinary UTF-8
+#    rather than private-use-area codepoints, so bat_charging is greppable.
+#    The default icon set is "none", which is special-cased and reads no file
+#    at all -- without this the whole icons/ directory could go missing and
+#    every other assertion here would still pass.
+grep -q '🔌' "$out"
+
+# 5. A theme that does not exist must be an error, so assertion 3 cannot pass
+#    by the lookup succeeding for the wrong reason.
+cat > "$AUTOPKGTEST_TMP/bad.toml" <<'EOF'
+[theme]
+theme = "pkghaus-no-such-theme"
+
+[[block]]
+block = "custom"
+command = "echo x"
+interval = "once"
+EOF
+if timeout 20 i3status-rs "$AUTOPKGTEST_TMP/bad.toml" > "$AUTOPKGTEST_TMP/bad.out" 2>&1; then
+    echo "FAIL: an unknown theme was accepted" >&2
+    exit 1
+fi
+grep -qi "not found" "$AUTOPKGTEST_TMP/bad.out"
+
+echo "PASS: status line rendered, theme and icon set resolved from /usr/share"
