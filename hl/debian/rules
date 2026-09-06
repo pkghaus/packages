@@ -1,0 +1,82 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+# Rust's equivalent of Go's -trimpath. Without it the binary embeds the build
+# directory and a rebuild anywhere else produces different bytes.
+export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
+
+# And the registry with it. Cargo unpacks dependency sources under CARGO_HOME,
+# whose default is $HOME/.cargo, and rustc embeds those paths. In-tree, so the
+# remap above covers it.
+export CARGO_HOME := $(CURDIR)/.cargo
+
+# rustc is not a Debian package and so is not in .buildinfo's
+# Installed-Build-Depends; pinning it here puts the version in debian/rules,
+# which ships inside the source package, so a rebuild resolves the same
+# compiler the original did.
+#
+# Upstream's rust-toolchain.toml pins 1.95, which is a real pin rather than a
+# floating channel, but the fleet builds on one compiler and RUSTUP_TOOLCHAIN
+# overrides the file. Move it with each upstream bump.
+export RUSTUP_TOOLCHAIN := 1.98.1
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	cargo clean
+	rm -rf $(CURDIR)/.cargo debian/completions
+
+# THE REASON THIS PACKAGE HAS A PATCH.
+#
+# Upstream's build.rs calls update_schema_directives(), which fetches JSON
+# schemas over the NETWORK, hashes them, and rewrites the `#:schema` line in
+# etc/defaults/*.toml when the remote hash differs from the local one. That file
+# is not a runtime asset: src/settings.rs pulls it into the binary with
+#
+#     static DEFAULT_SETTINGS_RAW: &str = include_str!("../etc/defaults/config.toml");
+#
+# so the shipped bytes depend on what a remote server answered at build time.
+# Two builds of the same source can differ, which is the one property this
+# archive claims and verifies with debrebuild.
+#
+# It is a single call in run(), and removing it leaves the rest of the script --
+# capnp codegen, the version, theme versions -- untouched. Both the removal and
+# the absence of any other caller are asserted, because a silently failed sed
+# restores the network dependency and nothing downstream would notice.
+execute_before_dh_auto_build:
+	sed -i '/^\s*update_schema_directives()?;\s*$$/d' build.rs
+	# The CALL must be gone and the definition must remain -- matching the bare
+	# name would match `fn update_schema_directives`, which is why this asserts
+	# on the call's exact text instead.
+	! grep -qF 'update_schema_directives()?;' build.rs
+	grep -q 'fn update_schema_directives' build.rs
+	# And nothing else may still reach the network at build time.
+	! grep -qF 'fetch_and_hash_url(' build.rs || \
+		grep -q 'fn fetch_and_hash_url' build.rs
+
+override_dh_auto_build:
+	cargo build --release
+	# The version comes from CARGO_PKG_VERSION for a stable release (build.rs
+	# only consults git for pre-release versions), but assert it rather than
+	# reason about it: a wrong version string is exactly what shipped in berry,
+	# viddy and vegeta when .git stopped being present.
+	@echo "hl reports: $$(./target/release/hl --version)"
+	./target/release/hl --version | grep -qF '$(DEB_VERSION_UPSTREAM)'
+	mkdir -p debian/completions
+	for sh in bash zsh fish; do \
+		./target/release/hl --shell-completions $$sh > debian/completions/hl.$$sh; \
+		test -s debian/completions/hl.$$sh; \
+	done
+
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 target/release/hl debian/hl/usr/bin/hl
+	install -Dm0644 debian/completions/hl.bash \
+		debian/hl/usr/share/bash-completion/completions/hl
+	install -Dm0644 debian/completions/hl.zsh \
+		debian/hl/usr/share/zsh/vendor-completions/_hl
+	install -Dm0644 debian/completions/hl.fish \
+		debian/hl/usr/share/fish/vendor_completions.d/hl.fish

@@ -1,0 +1,26 @@
+Source: gitu
+Section: vcs
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ rustup,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://github.com/altsem/gitu
+
+Package: gitu
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ git,
+Description: terminal user interface for git, in the style of Magit
+ gitu presents the working tree as a single buffer -- unstaged and staged
+ changes, recent commits, stashes -- and acts on whatever the cursor is over,
+ down to staging an individual hunk or line. Keybindings follow Magit's rather
+ than git's subcommand names.
+ .
+ It reads repository state through libgit2 and shells out to git for the
+ operations that write, so the git it drives is the one on PATH and behaves as
+ configured.

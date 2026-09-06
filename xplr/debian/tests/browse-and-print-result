@@ -1,0 +1,87 @@
+#!/bin/bash
+#
+# xplr exists to be wired into a shell: it draws a file browser on the terminal
+# and prints the SELECTION to stdout, so `cd "$(xplr)"` works. That split is
+# what makes a real functional gate possible here, where bluetui and impala only
+# got a configuration or CLI-contract gate -- the TUI is on the tty, the answer
+# is on stdout, and the answer is deterministic for a known directory.
+#
+# So this drives the actual interface. It builds a fixture directory, starts
+# xplr on it inside tmux with stdout redirected to a file, and asserts on what
+# lands there:
+#
+#   enter          -> prints the FOCUSED entry (the first, alphabetically)
+#   down + enter   -> prints the SECOND entry
+#
+# The second case is what makes the first mean something. A binary that printed
+# its argument, or the first directory entry, or any constant, satisfies the
+# first assertion and fails this one -- navigation has to actually move focus
+# and the result has to follow it.
+#
+# WHAT THIS DOES NOT PROVE: that the Lua runtime resolves symbols back into the
+# executable. That needs -rdynamic, which debian/rules asserts at BUILD time by
+# counting exported dynamic symbols, because a missing one is invisible here.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+want="$(dpkg-query -W -f='${Version}' xplr | sed 's/-[^-]*$//')"
+reported="$(xplr --version 2>&1)"
+printf '%s\n' "$reported"
+case "$reported" in
+    *"$want"*) ;;
+    *) echo "xplr --version [$reported] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+xplr --help >/dev/null 2>&1 || { echo "--help did not succeed" >&2; exit 1; }
+
+# A fixture whose ordering is unambiguous. Names chosen so alphabetical order
+# and creation order differ, or a program that ignored sorting would pass.
+FIX="$WORK/fixture"
+mkdir -p "$FIX"
+: > "$FIX/zulu.txt"
+: > "$FIX/alpha.txt"
+: > "$FIX/mike.txt"
+
+# run <label> <keys...> -> the printed result in $RESULT
+RESULT="$WORK/result"
+run() {
+    local label="$1"; shift
+    rm -f "$RESULT"
+    tmux kill-server >/dev/null 2>&1 || true
+    tmux new-session -d -x 200 -y 50 \
+        "cd '$FIX' && xplr > '$RESULT' 2>'$WORK/err'"
+    # Give it time to draw before sending anything: keys delivered to a pane
+    # that has not started the program yet are simply lost.
+    for _ in $(seq 1 40); do
+        tmux capture-pane -p 2>/dev/null | grep -q 'alpha.txt' && break
+        sleep 0.25
+    done
+    tmux capture-pane -p > "$WORK/pane.$label" 2>/dev/null || true
+    for k in "$@"; do tmux send-keys "$k"; sleep 0.3; done
+    for _ in $(seq 1 20); do
+        [ -s "$RESULT" ] && break
+        sleep 0.25
+    done
+    tmux kill-server >/dev/null 2>&1 || true
+    printf '  %-14s -> %s\n' "$label" "$(tr -d '\n' < "$RESULT" 2>/dev/null || echo '<empty>')"
+}
+
+run focused Enter
+grep -q 'alpha.txt' "$WORK/pane.focused" \
+    || { echo "xplr did not render the fixture directory" >&2
+         cat "$WORK/pane.focused" >&2; exit 1; }
+[ -s "$RESULT" ] || { echo "enter printed nothing to stdout" >&2; cat "$WORK/err" >&2; exit 1; }
+grep -q 'alpha.txt$' "$RESULT" \
+    || { echo "expected the focused entry (alpha.txt), got [$(cat "$RESULT")]" >&2; exit 1; }
+
+# The discriminating case.
+run navigated Down Enter
+grep -q 'mike.txt$' "$RESULT" \
+    || { echo "after one Down the result should be mike.txt, got [$(cat "$RESULT")]" >&2
+         cat "$WORK/pane.navigated" >&2; exit 1; }
+
+echo "xplr $want rendered the directory, moved focus on Down, and printed the focused path each time"

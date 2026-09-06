@@ -1,0 +1,22 @@
+hl for Debian
+-------------
+
+This package ships no configuration file, deliberately.
+
+hl looks for configuration in two places: your own directory
+(~/.config/hl/) and a system-wide one (/etc/hl/). It has a complete set of
+defaults compiled into the binary, so it works with neither present.
+
+Shipping a copy of those defaults into /etc/hl/ would make it a dpkg conffile:
+tracked, and prompted about on every upgrade that changes it, in exchange for a
+file that only restates what the binary already does. So the defaults are
+shipped as an example instead.
+
+To customise, copy it and edit your copy:
+
+  /usr/share/doc/hl/examples/config.toml  ->  ~/.config/hl/config.toml
+
+or, for every user on the machine, to /etc/hl/config.toml. A file you create
+there is yours: dpkg does not own it and will not touch it.
+
+ -- pkg.haus archive <archive@pkg.haus>

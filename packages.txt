@@ -19,7 +19,9 @@ d2
 difftastic
 frp
 fx
+gitu
 gotypist
+hl
 i3-autodisplay
 i3lock-color
 impala
@@ -36,4 +38,5 @@ typst
 vale
 vegeta
 viddy
+xplr
 zola

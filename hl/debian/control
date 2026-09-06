@@ -1,0 +1,24 @@
+Source: hl
+Section: utils
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ rustup,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://github.com/pamburus/hl
+
+Package: hl
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: log viewer for JSON and logfmt records
+ hl reads structured logs -- JSON objects or logfmt lines, one record per line
+ -- and renders them as readable columns, sorting by timestamp and colouring by
+ level. It reads files, standard input, or several files merged together.
+ .
+ Records can be filtered on level, on time range, and on field values, which is
+ what makes it usable on a log too large to page through. Output is plain text,
+ so it composes with the rest of the shell.

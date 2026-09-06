@@ -1,0 +1,6 @@
+Tests: browse-and-print-result
+# tmux, because xplr is a full-screen TUI and needs a real terminal: it draws
+# to the tty and prints its RESULT to stdout, which is the whole point of the
+# program and the thing this test exercises.
+Depends: @, tmux
+Restrictions: allow-stderr

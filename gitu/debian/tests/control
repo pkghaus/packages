@@ -1,0 +1,6 @@
+Tests: stage-a-change
+# tmux, because gitu is a full-screen TUI and will not start without a
+# terminal. git comes in through Depends: @ -- gitu shells out to it for the
+# operations that write, and this test uses it as the independent witness.
+Depends: @, tmux
+Restrictions: allow-stderr

@@ -1,0 +1,5 @@
+Tests: render-and-filter
+# No tmux and no root: hl reads a file and writes text, so the test can assert
+# on exact output rather than on a rendered screen.
+Depends: @
+Restrictions: allow-stderr

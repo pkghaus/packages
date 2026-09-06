@@ -1,0 +1,91 @@
+#!/bin/bash
+#
+# gitu is a git client, so the strongest thing a test can do is let it change a
+# repository and then ask GIT whether it did. That is what this does: it builds
+# a repository with one unstaged modification, drives gitu to stage it, and
+# checks the result with `git diff --cached`, which gitu has no part in.
+#
+# That makes it a stronger gate than a TUI that only reads (kudu's), because a
+# binary that renders a plausible screen and does nothing passes the drawing
+# assertions and fails this one.
+#
+# Two things are asserted in order, and the second is the point:
+#
+#   1. the screen names the file as an unstaged change   (it read the repo)
+#   2. after `s`, git reports the file as staged          (it wrote the repo)
+#
+# WHAT THIS DOES NOT PROVE: any of the network operations -- push, pull, fetch
+# -- or the menus that wrap them. Those need a remote, and a testbed has none.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+want="$(dpkg-query -W -f='${Version}' gitu | sed 's/-[^-]*$//')"
+reported="$(gitu --version 2>&1)"
+printf '%s\n' "$reported"
+case "$reported" in
+    *"$want"*) ;;
+    *) echo "gitu --version [$reported] does not name the packaged version [$want]" >&2
+       echo "the git_version! fallback to Cargo.toml did not fire" >&2
+       exit 1 ;;
+esac
+
+REPO="$WORK/repo"
+mkdir -p "$REPO"
+cd "$REPO"
+export GIT_CONFIG_GLOBAL="$WORK/gitconfig"
+export GIT_CONFIG_NOSYSTEM=1
+git init -q -b main .
+git config user.email "test@pkg.haus"
+git config user.name "pkg.haus test"
+printf 'one\n' > tracked.txt
+git add tracked.txt
+git commit -q -m "initial commit"
+# The modification gitu has to find, stage, and be judged on.
+printf 'one\ntwo\n' > tracked.txt
+
+[ -z "$(git diff --cached --name-only)" ] \
+    || { echo "fixture is wrong: something is staged before gitu ran" >&2; exit 1; }
+
+tmux kill-server >/dev/null 2>&1 || true
+# stdout is NOT redirected, deliberately. gitu draws its interface on STDOUT,
+# so redirecting it sends the whole TUI into a file and leaves the pane empty --
+# which reads exactly like "the program never started". xplr is the opposite
+# (interface on the tty, result on stdout) and the two must not be confused.
+tmux new-session -d -x 200 -y 50 "cd '$REPO' && gitu 2>'$WORK/err'"
+
+# Wait for the first draw. Keys sent to a pane whose program has not started
+# are discarded, which is the difference between a flaky test and a real one.
+drew=no
+for _ in $(seq 1 40); do
+    if tmux capture-pane -p 2>/dev/null | grep -q 'tracked.txt'; then drew=yes; break; fi
+    sleep 0.25
+done
+tmux capture-pane -p > "$WORK/pane" 2>/dev/null || true
+[ "$drew" = yes ] || { echo "gitu never rendered the repository" >&2
+                       cat "$WORK/pane" "$WORK/err" >&2; exit 1; }
+
+grep -qi 'unstaged' "$WORK/pane" \
+    || { echo "the screen does not show an unstaged section" >&2; cat "$WORK/pane" >&2; exit 1; }
+echo "  rendered: $(grep -ci . "$WORK/pane") lines, names tracked.txt as unstaged"
+
+# Walk down to the file entry and stage it. The exact row is layout-dependent,
+# so this presses s on each of the first few rows; git decides whether any of
+# them worked, and an empty result below is a failure either way.
+for _ in 1 2 3 4 5; do
+    tmux send-keys Down; sleep 0.2
+    tmux send-keys s;    sleep 0.4
+    [ -n "$(git diff --cached --name-only 2>/dev/null)" ] && break
+done
+tmux send-keys q; sleep 0.5
+tmux kill-server >/dev/null 2>&1 || true
+
+staged="$(git diff --cached --name-only)"
+printf '  staged after gitu: [%s]\n' "$staged"
+[ "$staged" = "tracked.txt" ] \
+    || { echo "gitu did not stage tracked.txt; git reports [$staged]" >&2
+         cat "$WORK/pane" >&2; exit 1; }
+
+echo "gitu $want read the repository, and git confirms it staged tracked.txt"

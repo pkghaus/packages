@@ -1,0 +1,13 @@
+xplr for Debian
+---------------
+
+This package ships no configuration file. xplr has its defaults compiled in, so
+there is nothing in /etc for dpkg to track and nothing to merge on upgrade.
+
+To customise it, copy the shipped example and edit your copy:
+
+  /usr/share/doc/xplr/examples/init.lua
+
+to ~/.config/xplr/init.lua.
+
+ -- pkg.haus archive <archive@pkg.haus>

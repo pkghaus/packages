@@ -1,0 +1,4 @@
+# Rust links its vendored C dependencies statically by design. Here it is
+# LuaJIT and the YAML parser the configuration loader uses, both built from
+# sources inside the crate tree rather than linked from the archive.
+xplr: embedded-library

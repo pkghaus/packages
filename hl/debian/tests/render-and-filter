@@ -1,0 +1,83 @@
+#!/bin/bash
+#
+# hl converts structured logs to readable text, which makes this the one test in
+# the fleet that can assert on exact output for exact input. bluetui got a
+# configuration gate and impala a CLI-contract gate because their function needs
+# hardware a container has not got; hl's function IS the transformation, and the
+# transformation is deterministic.
+#
+# Four assertions, in increasing strength:
+#
+#   1. it renders a JSON record         -- the message and the field survive
+#   2. it renders a logfmt record       -- the second input format works
+#   3. -l error filters                 -- one record in, one of two out
+#   4. a field filter selects           -- content decides, not position
+#
+# 3 and 4 are what make 1 and 2 mean something: a program that echoed its input
+# unchanged passes both rendering checks and fails both filters.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+
+want="$(dpkg-query -W -f='${Version}' hl | sed 's/-[^-]*$//')"
+reported="$(hl --version 2>&1)"
+printf '%s\n' "$reported"
+case "$reported" in
+    *"$want"*) ;;
+    *) echo "hl --version [$reported] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+for f in /usr/share/bash-completion/completions/hl \
+         /usr/share/zsh/vendor-completions/_hl \
+         /usr/share/fish/vendor_completions.d/hl.fish; do
+    [ -s "$f" ] || { echo "missing or empty completion: $f" >&2; exit 1; }
+done
+bash -n /usr/share/bash-completion/completions/hl \
+    || { echo "the shipped bash completion does not parse" >&2; exit 1; }
+
+# Two records, deliberately differing in level and in a field value, so a
+# filter has something to get wrong.
+cat > input.json <<'JSON'
+{"time":"2026-09-06T10:00:00Z","level":"info","msg":"cache warmed","component":"archive"}
+{"time":"2026-09-06T10:00:01Z","level":"error","msg":"bucket unreachable","component":"storage"}
+JSON
+
+printf '%s\n' \
+  'time=2026-09-06T10:00:02Z level=warning msg="index rebuilt" component=aptly' \
+  > input.logfmt
+
+hl --color=never input.json > out.json 2>err.json || {
+    echo "hl failed on JSON input" >&2; cat err.json >&2; exit 1; }
+printf '  json    -> %s\n' "$(tr -d '\n' < out.json | cut -c1-96)"
+grep -q 'cache warmed'       out.json || { echo "the info message is missing from the output" >&2; cat out.json >&2; exit 1; }
+grep -q 'bucket unreachable' out.json || { echo "the error message is missing from the output" >&2; cat out.json >&2; exit 1; }
+grep -q 'archive'            out.json || { echo "the component field was dropped" >&2; cat out.json >&2; exit 1; }
+
+hl --color=never input.logfmt > out.logfmt 2>err.logfmt || {
+    echo "hl failed on logfmt input" >&2; cat err.logfmt >&2; exit 1; }
+printf '  logfmt  -> %s\n' "$(tr -d '\n' < out.logfmt | cut -c1-96)"
+grep -q 'index rebuilt' out.logfmt \
+    || { echo "logfmt input was not rendered" >&2; cat out.logfmt >&2; exit 1; }
+
+# The discriminating pair. Anything that passes the input through satisfies
+# everything above and fails both of these.
+hl --color=never -l error input.json > out.filtered 2>err.filtered || {
+    echo "hl failed with a level filter" >&2; cat err.filtered >&2; exit 1; }
+printf '  -l error -> %s\n' "$(tr -d '\n' < out.filtered | cut -c1-96)"
+grep -q 'bucket unreachable' out.filtered \
+    || { echo "-l error dropped the error record" >&2; cat out.filtered >&2; exit 1; }
+grep -q 'cache warmed' out.filtered \
+    && { echo "-l error kept the info record; it is not filtering" >&2; cat out.filtered >&2; exit 1; }
+
+hl --color=never -f component=storage input.json > out.field 2>err.field || {
+    echo "hl failed with a field filter" >&2; cat err.field >&2; exit 1; }
+printf '  -f field -> %s\n' "$(tr -d '\n' < out.field | cut -c1-96)"
+grep -q 'bucket unreachable' out.field \
+    || { echo "the field filter dropped the matching record" >&2; cat out.field >&2; exit 1; }
+grep -q 'cache warmed' out.field \
+    && { echo "the field filter kept a non-matching record" >&2; cat out.field >&2; exit 1; }
+
+echo "hl $want rendered JSON and logfmt, and both the level and field filters selected one record of two"
