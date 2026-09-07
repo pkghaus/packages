@@ -1,0 +1,6 @@
+version=4
+# Codeberg, not GitHub: ziglang/zig on GitHub is a stale mirror whose
+# description reads "Moved to Codeberg" and whose tags stop at 0.15.2.
+# Forgejo serves the same /tags page shape.
+opts=filenamemangle=s/.+\/v?(\d[^-]*)\.tar\.gz/@PACKAGE@-$1\.tar\.gz/ \
+  https://codeberg.org/ziglang/zig/tags .*/v?(\d[^-]*)\.tar\.gz

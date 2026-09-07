@@ -1,0 +1,54 @@
+#!/bin/sh
+# Zig is a compiler, so the gate is compiling. This builds a real executable
+# from source and runs it, which exercises the standard library shipped in
+# /usr/lib/zig rather than just the binary in /usr/bin.
+set -eu
+
+: "${AUTOPKGTEST_TMP:?}"
+
+# HOME inside the testbed: zig writes a global cache under $XDG_CACHE_HOME or
+# $HOME/.cache, and a read-only or absent HOME makes it fail for a reason that
+# has nothing to do with the package.
+HOME="$AUTOPKGTEST_TMP/home"
+export HOME
+mkdir -p "$HOME"
+
+cd "$AUTOPKGTEST_TMP"
+
+# std.debug.print, which writes to stderr and has held its signature across
+# releases. Verified against 0.16.0 before shipping: the stdout path there is
+# std.Io.File.stdout() whose writer() takes an Io instance, which is a lot of
+# ceremony for a smoke test and more API surface to break on the next bump.
+cat > hello.zig <<'EOF'
+const std = @import("std");
+
+pub fn main() void {
+    std.debug.print("pkghaus-{d}\n", .{6 * 7});
+}
+EOF
+
+echo "--- zig version: $(zig version)"
+
+# 1. It compiles. This reaches the std sources under /usr/lib/zig; if that tree
+#    were missing or truncated the import fails here rather than at run time.
+zig build-exe hello.zig
+
+# 2. And the binary it produced actually runs and computed the value, so the
+#    test cannot pass on a compiler that emits a valid-looking empty program.
+#    stderr, because that is where std.debug.print writes.
+out="$(./hello 2>&1 1>/dev/null)"
+echo "--- program said: $out"
+[ "$out" = "pkghaus-42" ]
+
+# 3. The C compiler front end, which is the other half of what zig is used for
+#    and depends on the bundled libc headers rather than on the std sources.
+cat > hi.c <<'EOF'
+#include <stdio.h>
+int main(void) { printf("c-%d\n", 6 * 7); return 0; }
+EOF
+zig cc hi.c -o hi
+cout="$(./hi)"
+echo "--- cc said: $cout"
+[ "$cout" = "c-42" ]
+
+echo "PASS: compiled and ran both a Zig and a C program"

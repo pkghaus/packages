@@ -1,0 +1,38 @@
+Source: zig
+Section: devel
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ cmake,
+ debhelper-compat (= 13),
+ libclang-21-dev,
+ liblld-21-dev,
+ libpolly-21-dev,
+ libzstd-dev,
+ llvm-21-dev,
+ ninja-build,
+ patchelf,
+ zlib1g-dev,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://ziglang.org
+
+Package: zig
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: general-purpose programming language and toolchain
+ Zig is a systems language with no hidden control flow, no hidden allocations
+ and no preprocessor, and a toolchain that doubles as a drop-in C and C++
+ cross-compiler: zig cc targets any supported triple from any host, bundling
+ the libc headers it needs rather than requiring a sysroot per target.
+ .
+ This package carries the compiler and its standard library. LLVM is linked
+ statically so the binary works on any of the archive's suites; the sources
+ the compiler ships to build against live under /usr/lib/zig.
+ .
+ The compiler is bootstrapped from stage1/zig1.wasm, a prebuilt WebAssembly
+ seed committed by upstream that is not reproducible from source. It does not
+ influence the result: regenerating it with "zig build update-zig1" and
+ rebuilding from the regenerated seed yields a byte-identical compiler.

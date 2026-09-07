@@ -1,0 +1,5 @@
+Tests: compile-and-run
+# No extra dependencies: zig bundles its own linker and libc headers, and
+# needing anything here would itself be a finding.
+Depends: @
+Restrictions: allow-stderr

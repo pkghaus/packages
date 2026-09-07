@@ -1,0 +1,91 @@
+#!/usr/bin/make -f
+
+# DEB_VERSION_UPSTREAM, used below both to pin the version zig reports and to
+# assert the built binary agrees. Without this include the variable expands to
+# nothing and every check against it becomes vacuous.
+include /usr/share/dpkg/pkg-info.mk
+
+# Zig derives its version from `git describe` when ZIG_VERSION is empty
+# (CMakeLists.txt), and the builder deletes the clone's .git before building.
+# Upstream guards that branch on `.git` existing, so it degrades to the
+# hardcoded ZIG_VERSION_MAJOR/MINOR/PATCH rather than to an empty string -- but
+# that leaves the version a property of the build environment rather than of
+# the source package. Setting it explicitly means git is never consulted at
+# all, which is what makes the build reproducible from the .dsc.
+ZIG_VERSION := $(DEB_VERSION_UPSTREAM)
+
+# Statically linked LLVM. The alternative links libLLVM-21 and libclang-cpp-21,
+# which exist in testing and unstable but NOT in trixie -- only in
+# trixie-backports, which a user of this archive has no reason to have enabled.
+# A package that cannot be installed on stable is not worth publishing, so the
+# ~24 MB of extra compressed size buys the archive's central promise: apt
+# install works after adding pkg.haus, on every suite.
+# -Dpie reaches `zig build` through ZIG_EXTRA_BUILD_ARGS, which CMakeLists
+# appends to ZIG_BUILD_ARGS. stage3 is linked by zig2 rather than by cmake, so
+# the usual dpkg hardening flags do not reach it and the first build shipped a
+# non-PIE compiler (lintian hardening-no-pie). This is upstream's own option
+# (build.zig: b.option(bool, "pie", ...)), not a flag forced past them.
+CMAKE_FLAGS := \
+	-G Ninja \
+	-DCMAKE_BUILD_TYPE=Release \
+	-DZIG_STATIC_LLVM=ON \
+	-DZIG_VERSION=$(ZIG_VERSION) \
+	-DZIG_EXTRA_BUILD_ARGS=-Dpie=true
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	rm -rf build
+
+override_dh_auto_configure:
+	test -n '$(DEB_VERSION_UPSTREAM)'
+	cmake -S . -B build $(CMAKE_FLAGS)
+
+override_dh_auto_build:
+	ninja -C build
+	# The version must come from the source package, not from the absent
+	# repository. A bare `0.16.0` here and nothing else: `git describe` output
+	# would carry a -N-gHASH suffix, and the hardcoded fallback would silently
+	# match too, so this asserts the whole string rather than a prefix.
+	./build/stage3/bin/zig version | grep -qx '$(ZIG_VERSION)'
+
+# Upstream's suite builds the compiler several more times over and takes hours.
+# Function is covered by debian/tests, which compiles and runs a real program
+# against the installed package.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 build/stage3/bin/zig debian/zig/usr/bin/zig
+	# The link leaves RUNPATH=/usr/lib/llvm-21/lib behind even though LLVM is
+	# static and nothing the binary loads lives there -- checked: it needs only
+	# libz3, libxml2, libzstd, zlib, libstdc++, libgcc_s and libc, all on the
+	# default search path. Left in, it is a lintian error and worse than
+	# cosmetic: /usr/lib/llvm-21/lib exists only on a machine with the
+	# backports LLVM installed, so the binary would resolve libraries
+	# differently depending on packages that have nothing to do with it.
+	patchelf --remove-rpath debian/zig/usr/bin/zig
+	! readelf -d debian/zig/usr/bin/zig | grep -qiE 'R(UN)?PATH'
+	# And PIE actually took, since it is passed through two layers of build
+	# system to a linker invocation this file never sees.
+	readelf -h debian/zig/usr/bin/zig | grep -qE 'Type:[[:space:]]+DYN'
+	# /usr/lib/zig, not /usr/share: the binary walks up from its own path and
+	# tests each ancestor for lib/zig/std/std.zig (src/introspect.zig), so the
+	# directory name and its position relative to the executable are an
+	# interface rather than a layout preference.
+	install -dm0755 debian/zig/usr/lib
+	cp -r build/stage3/lib/zig debian/zig/usr/lib/zig
+	test -f debian/zig/usr/lib/zig/std/std.zig
+	# A truncated copy still produces a working `zig version` and only fails on
+	# the first real compile, so the whole tree is compared against the one the
+	# build produced. Counted rather than guessed at a threshold: the first
+	# attempt asserted more than 1000 .zig files and 0.16.0 ships 968, which
+	# fails the build for being wrong about the package rather than about the
+	# copy.
+	test "$$(find build/stage3/lib/zig -type f | wc -l)" \
+	   -eq "$$(find debian/zig/usr/lib/zig -type f | wc -l)"
+	test "$$(find debian/zig/usr/lib/zig -type f | wc -l)" -gt 5000
+
+override_dh_dwz:
+	# zig2 emits DWARF that dwz rejects; the binary is shipped stripped and
+	# carries no split debug info to compress.
