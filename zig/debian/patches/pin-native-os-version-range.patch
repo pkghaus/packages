@@ -1,0 +1,61 @@
+Description: Do not narrow the native OS version range to the build host's kernel
+ Resolving a native Linux target narrows the OS version range to the running
+ kernel, and the result is baked into the compiler being built as its own
+ builtin target. The same source therefore produces different bytes on hosts
+ with different kernels -- six of them, two u64 pairs in .rodata and
+ .data.rel.ro, with every section size unchanged -- so the package cannot be
+ reproduced by a rebuilder whose kernel differs, and nothing in a .buildinfo
+ records the build machine's kernel for them to match.
+ .
+ A distribution compiler should not carry this either way: what it assumes
+ about the host would otherwise depend on whichever machine happened to
+ package it, in the same way that leaving ZIG_TARGET_MCPU at "native" made the
+ instruction set depend on it.
+ .
+ defaultVersionRange() has already supplied a host-independent range before
+ this point. Upstream falls back to exactly that on any host whose uname
+ release string is not valid semver -- every WSL2 machine, for instance -- so
+ the resulting state is one the compiler already reaches routinely.
+ .
+ An environment-variable guard was tried first, so that only the package build
+ skipped detection and the shipped compiler kept upstream behaviour. It is not
+ practical: resolveTargetQuery() takes no environ map, and the idiomatic
+ std.zig.EnvVar.<NAME>.get(environ_map) route would need one threaded through
+ six call sites in std (zig.zig, Build.zig x2, Query.zig x3), which would break
+ on every upstream release.
+Author: pkg.haus archive <archive@pkg.haus>
+Forwarded: no
+Last-Update: 2026-09-07
+--- a/lib/std/zig/system.zig
++++ b/lib/std/zig/system.zig
+@@ -230,20 +230,16 @@
+     if (query.os_tag == null) {
+         switch (builtin.target.os.tag) {
+             .linux, .illumos => {
+-                const uts = posix.uname();
+-                const release = mem.sliceTo(&uts.release, 0);
+-                // The release field sometimes has a weird format,
+-                // `Version.parse` will attempt to find some meaningful interpretation.
+-                if (std.SemanticVersion.parse(release)) |ver| {
+-                    var stripped = ver;
+-                    stripped.pre = null;
+-                    stripped.build = null;
+-                    os.version_range.linux.range.min = stripped;
+-                    os.version_range.linux.range.max = stripped;
+-                } else |err| switch (err) {
+-                    error.Overflow => {},
+-                    error.InvalidVersion => {},
+-                }
++                // Upstream narrows the range to the running kernel here. A
++                // distribution compiler must not: the value is baked into the
++                // compiler as its own builtin target, so the same source builds
++                // to different bytes on hosts with different kernels, and it
++                // also makes what the compiler assumes about the host depend on
++                // whichever machine happened to package it. `defaultVersionRange`
++                // has already supplied a host-independent range, which is what
++                // upstream itself falls back to on any host whose uname release
++                // string is not valid semver, so this is a state the compiler
++                // already reaches routinely rather than a new one.
+             },
+             .windows => {
+                 const detected_version = windows.detectRuntimeVersion();

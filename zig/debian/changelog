@@ -1,3 +1,15 @@
+zig (0.16.0-3) unstable; urgency=medium
+
+  * Stop the build host's kernel version reaching the compiler. Resolving a
+    native Linux target narrowed the OS version range to the running kernel and
+    baked it in, so 0.16.0-2 could not be reproduced by a rebuilder on a
+    different kernel, and what the compiler assumed about the host depended on
+    which machine packaged it.
+  * Add a DEP-8 test asserting the native minimum is upstream's own default
+    rather than a machine's kernel.
+
+ -- pkg.haus archive <archive@pkg.haus>  Mon, 07 Sep 2026 16:51:39 +0200
+
 zig (0.16.0-2) unstable; urgency=medium
 
   * Build for the architecture baseline instead of the build machine's CPU.
