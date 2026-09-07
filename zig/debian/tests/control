@@ -11,3 +11,9 @@ Tests: baseline-cpu
 # dependency costs the same once and never enters the record.
 Depends: @, qemu-user
 Restrictions: allow-stderr
+
+Tests: native-os-range
+# No extra dependencies: this compiles with the package under test and reads a
+# value out of the result.
+Depends: @
+Restrictions: allow-stderr

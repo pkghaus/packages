@@ -1,0 +1,48 @@
+#!/bin/sh
+# The compiler must not have the packaging machine's kernel version in it.
+#
+# Upstream narrows the native target's Linux version range to the running
+# kernel and bakes the result into the compiler as its own builtin target,
+# which made the same source build to different bytes on hosts with different
+# kernels. debian/patches/pin-native-os-version-range.patch drops the
+# narrowing, leaving defaultVersionRange()'s host-independent values.
+#
+# Read the value out of a program the package compiles, which is the same code
+# path that produces the baked one.
+#
+# HONEST LIMIT: this is vacuous on a testbed whose `uname -r` is not valid
+# semver, because upstream's own fallback already yields the expected answer
+# there. It bites on an ordinary kernel, which is what CI runs on, and that is
+# where the regression it guards against would come from.
+set -eu
+
+: "${AUTOPKGTEST_TMP:?}"
+
+HOME="$AUTOPKGTEST_TMP/home"
+export HOME
+mkdir -p "$HOME"
+
+cd "$AUTOPKGTEST_TMP"
+
+cat > range.zig <<'ZIG'
+const std = @import("std");
+const builtin = @import("builtin");
+
+pub fn main() void {
+    const r = builtin.os.version_range.linux.range;
+    std.debug.print("{d}.{d}\n", .{ r.min.major, r.min.minor });
+}
+ZIG
+
+echo "--- testbed kernel: $(uname -r)"
+
+zig build-exe range.zig
+out="$(./range 2>&1 1>/dev/null)"
+echo "--- compiler reports native minimum kernel: $out"
+
+# 5.10 is upstream's own default_min in lib/std/Target.zig. Asserted as the
+# exact string: a range derived from the build or test machine would report
+# that machine's kernel instead, which is the defect.
+[ "$out" = "5.10" ]
+
+echo "PASS: the native OS version range is host-independent"
