@@ -25,10 +25,20 @@ ZIG_VERSION := $(DEB_VERSION_UPSTREAM)
 # the usual dpkg hardening flags do not reach it and the first build shipped a
 # non-PIE compiler (lintian hardening-no-pie). This is upstream's own option
 # (build.zig: b.option(bool, "pie", ...)), not a flag forced past them.
+# ZIG_TARGET_MCPU defaults to "native" in upstream's CMakeLists and is passed
+# through as `zig build -Dcpu=`, so leaving it unset compiles the compiler for
+# whatever CPU the build machine happens to have. 0.16.0-1 shipped that way and
+# was unusable: the unstable amd64 leg drew a runner with AVX512-FP16 and emitted
+# 535 such instructions, so the binary died on `vmovw` for anyone without
+# Sapphire Rapids or Zen 5, while trixie and testing drew older runners and still
+# required AVX2. Debian's amd64 baseline is SSE2. It also made the bytes depend on
+# the rebuilder's CPU, which is not something a .buildinfo records, so debrebuild
+# reported a clean reproduction that only held on hardware like the builder's.
 CMAKE_FLAGS := \
 	-G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DZIG_STATIC_LLVM=ON \
+	-DZIG_TARGET_MCPU=baseline \
 	-DZIG_VERSION=$(ZIG_VERSION) \
 	-DZIG_EXTRA_BUILD_ARGS=-Dpie=true
 
@@ -41,6 +51,10 @@ override_dh_auto_clean:
 override_dh_auto_configure:
 	test -n '$(DEB_VERSION_UPSTREAM)'
 	cmake -S . -B build $(CMAKE_FLAGS)
+	# CMake accepts an unknown -D name silently, so a typo in the variable above
+	# would leave ZIG_TARGET_MCPU at "native" with no error anywhere. Read the
+	# value back out of the cache rather than trusting that we passed it.
+	grep -qx 'ZIG_TARGET_MCPU:STRING=baseline' build/CMakeCache.txt
 
 override_dh_auto_build:
 	ninja -C build

@@ -1,3 +1,16 @@
+zig (0.16.0-2) unstable; urgency=medium
+
+  * Build for the architecture baseline instead of the build machine's CPU.
+    0.16.0-1 was unusable on most hardware: it required AVX512-FP16 in unstable
+    and AVX2 in trixie and testing, and aborted with SIGILL on the first
+    compile anywhere else. Its bytes also depended on the builder's CPU, so a
+    rebuild only reproduced on comparable hardware.
+  * Add a DEP-8 test that compiles and runs under an emulated baseline CPU, the
+    one check in the pipeline that does not execute on the machine that built
+    the package.
+
+ -- pkg.haus archive <archive@pkg.haus>  Mon, 07 Sep 2026 11:51:21 +0200
+
 zig (0.16.0-1) unstable; urgency=medium
 
   * Initial release.
