@@ -1,0 +1,13 @@
+# Upstream vendors the libc headers and sources that `zig cc` compiles against
+# for every target it supports, and some of those files are not UTF-8: MinGW's
+# x87 math assembly and NetBSD's headers carry Latin-1 bytes in author names
+# and comments. They are third-party sources shipped verbatim so the compiler
+# can build against them; re-encoding them would edit other projects' headers
+# to silence a warning about their spelling.
+zig: national-encoding
+
+# Upstream ships no man page and generates none. `zig --help` and
+# https://ziglang.org/documentation/0.16.0/ are the documentation, and writing
+# one here would mean inventing reference material for a compiler this package
+# only redistributes.
+zig: no-manual-page
