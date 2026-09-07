@@ -3,3 +3,11 @@ Tests: compile-and-run
 # needing anything here would itself be a finding.
 Depends: @
 Restrictions: allow-stderr
+
+Tests: baseline-cpu
+# qemu-user, deliberately NOT a build dependency. A build dependency enters
+# Installed-Build-Depends, so every future debrebuild of this package would
+# have to fetch 465 MB of emulator from snapshot to reproduce it. A test
+# dependency costs the same once and never enters the record.
+Depends: @, qemu-user
+Restrictions: allow-stderr

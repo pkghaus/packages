@@ -1,0 +1,56 @@
+#!/bin/sh
+# The compiler must run on the architecture's baseline CPU, not merely on the
+# one that built it.
+#
+# Nothing else in the pipeline can check this. The build and compile-and-run
+# both execute on the build machine, so a compiler built for that machine's own
+# CPU passes both however narrow its ISA requirements are. 0.16.0-1 shipped
+# exactly that: needing AVX512-FP16 on unstable and AVX2 on trixie and testing,
+# against a Debian amd64 baseline of SSE2. An emulated CPU is what breaks the
+# coupling, so this runs zig under one.
+#
+# Instruction counting cannot replace it: the fixed build still contains 764
+# AVX-512 mnemonics, inside statically linked LLVM's runtime-dispatched paths,
+# and runs correctly on SSE2. Only execution distinguishes reachable from
+# dispatched.
+set -eu
+
+: "${AUTOPKGTEST_TMP:?}"
+
+# Fail closed on an architecture with no mapping rather than silently skipping
+# the only portability check the package has.
+arch="$(dpkg --print-architecture)"
+case "$arch" in
+    amd64) emu=qemu-x86_64;  cpu=qemu64 ;;      # plain x86-64, SSE2
+    arm64) emu=qemu-aarch64; cpu=cortex-a53 ;;  # plain armv8-a
+    *) echo "no baseline CPU model mapped for $arch" >&2; exit 1 ;;
+esac
+
+HOME="$AUTOPKGTEST_TMP/home"
+export HOME
+mkdir -p "$HOME"
+
+cd "$AUTOPKGTEST_TMP"
+
+cat > baseline.zig <<'ZIG'
+const std = @import("std");
+
+pub fn main() void {
+    std.debug.print("baseline-{d}\n", .{6 * 7});
+}
+ZIG
+
+echo "--- $arch baseline: $emu -cpu $cpu"
+
+# Compiling is what faults: `zig version` returns before reaching the code
+# generator, so it succeeded even on the build that could not compile at all.
+"$emu" -cpu "$cpu" /usr/bin/zig build-exe baseline.zig
+
+# And run the result under the same emulated CPU. zig targets the native CPU by
+# default and reads it through CPUID, which qemu virtualises, so this also
+# proves the compiler emits baseline code when it is told the host is baseline.
+out="$("$emu" -cpu "$cpu" ./baseline 2>&1 1>/dev/null)"
+echo "--- program said: $out"
+[ "$out" = "baseline-42" ]
+
+echo "PASS: compiled and ran on a baseline $arch CPU"
