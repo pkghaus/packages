@@ -65,12 +65,11 @@ execute_before_dh_auto_build:
 # resolving fresh versions on the day.
 override_dh_auto_build:
 	cargo build --release --locked
-	# The version comes from Cargo.toml at compile time, so a mismatch means the
-	# tree is not the tag package.conf names.
-	./target/release/netscanner --version | grep -qF '$(DEB_VERSION_UPSTREAM)'
-	# And that the commit reached the binary. The version alone would pass on
-	# the empty-field bug this build.rs replacement exists to prevent.
-	./target/release/netscanner --version | grep -qF '$(NS_COMMIT)'
+	# The WHOLE first line, not its parts. Asserting that each piece is merely
+	# PRESENT is how rainfrog shipped "0.4.5-0.4.5 (commit ...)" past a green
+	# build in this same wave: every individual grep matched.
+	./target/release/netscanner --version | head -1 \
+		| grep -qxF 'netscanner $(DEB_VERSION_UPSTREAM) (commit $(NS_COMMIT))'
 
 # Upstream's tests want a live network and a populated OUI database. Function is
 # covered by debian/tests, which exercises the built package.

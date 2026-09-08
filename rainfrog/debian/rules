@@ -89,11 +89,20 @@ execute_before_dh_auto_build:
 
 override_dh_auto_build:
 	cargo build --release --locked $(CARGO_FEATURES)
-	# The absent features must actually be absent: a default-features build
-	# would have pulled DuckDB's bundled C++ or Oracle's client, and this is
-	# the assertion that catches CARGO_FEATURES being dropped.
-	! test -d target/release/build/libduckdb-sys
-	! test -d target/release/build/oracle
+	# The absent features must actually be absent, or a dropped CARGO_FEATURES
+	# silently downloads DuckDB and fails to find Oracle's client.
+	#
+	# Globbed, because cargo names these directories <crate>-<16 hex>. The first
+	# version of this assertion tested the bare names and so could never match:
+	# it passed whether or not the crates were built, which is the whole defect
+	# it was written to prevent.
+	#
+	# The count is the control. If cargo's layout ever moves, it fails loudly
+	# here rather than leaving the two negatives passing against a path that no
+	# longer exists.
+	test "$$(ls -1d target/release/build/*/ 2>/dev/null | wc -l)" -gt 0
+	! ls -d target/release/build/libduckdb-sys-*/ >/dev/null 2>&1
+	! ls -d target/release/build/oracle-*/ >/dev/null 2>&1
 	# The WHOLE composed string, not its parts. Asserting presence rather than
 	# shape is what let "0.4.5-0.4.5 (commit d8b0c8d08)" through a green build:
 	# every individual grep matched.
