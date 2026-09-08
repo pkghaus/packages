@@ -4,7 +4,7 @@ Tests: version-from-source-package
 Depends: @
 Restrictions: allow-stderr
 
-Tests: tui-renders
+Tests: scans-or-says-why
 # util-linux for script(1), which allocates the pty a full-screen TUI needs.
 # netscanner opens raw sockets for scanning, but the interface enumeration this
 # test asserts on goes through netlink and needs no capability.

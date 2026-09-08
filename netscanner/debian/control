@@ -22,5 +22,6 @@ Description: terminal network scanner and diagnostic tool
  .
  It builds raw packets rather than shelling out to other tools, so it needs
  CAP_NET_RAW. Run it as root, or grant the capability to the binary with
- "setcap cap_net_raw+ep /usr/bin/netscanner". Without it netscanner starts
- and reports no hosts, because the sockets it needs cannot be opened.
+ "setcap cap_net_raw+ep /usr/bin/netscanner". Without it netscanner exits
+ immediately with "Unable to create datalink channel: Operation not permitted"
+ rather than starting in a reduced mode.
