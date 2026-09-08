@@ -1,0 +1,98 @@
+#!/bin/sh
+# netscanner has exactly two correct behaviours, and which one applies is
+# decided by the testbed rather than by the package:
+#
+#   with CAP_NET_RAW     it opens a datalink channel and renders the TUI
+#   without it           it exits non-zero reporting that precise reason
+#
+# Both are asserted. Choosing between them at run time is deliberate: a docker
+# container has NET_RAW by default and the autopkgtest testbed does not, so a
+# test that demanded either one alone would fail somewhere it should pass. What
+# is NOT tolerated is a third outcome -- a blank screen, a hang, or a different
+# error -- which is what a broken build produces.
+#
+# The pty comes from script(1) and MUST be given a size: its default is 0x0 and
+# a TUI with no room renders nothing while still exiting 0. Without a pty at all
+# netscanner reports EAGAIN from the event stream instead, which is a third
+# error and tells us nothing about the network path.
+set -eu
+
+: "${AUTOPKGTEST_TMP:?}"
+
+HOME="$AUTOPKGTEST_TMP/home"
+export HOME TERM=xterm-256color
+mkdir -p "$HOME"
+cd "$AUTOPKGTEST_TMP"
+
+# Read from the testbed so the render assertion cannot be met by a constant.
+iface=""
+for d in /sys/class/net/*; do
+    n="${d##*/}"
+    [ "$n" = lo ] && continue
+    iface="$n"; break
+done
+: "${iface:?no non-loopback interface in the testbed}"
+echo "--- testbed interface: $iface"
+
+# SIGPIPE ignored around the fifo write below: if netscanner has already exited,
+# which is the whole unprivileged case, the write would otherwise kill this
+# script with 141 before any verdict is printed.
+trap '' PIPE
+
+log=render.log
+fifo=stdin.fifo
+mkfifo "$fifo"
+timeout 90 script -qec "stty rows 40 cols 140; netscanner --tick-rate 4 --frame-rate 8" \
+  "$log" < "$fifo" >/dev/null 2>&1 &
+sc=$!
+# Held open, or netscanner sees EOF on stdin and exits for an unrelated reason.
+exec 3> "$fifo"
+
+# Polled rather than slept. A fixed sleep passed locally at 8674 bytes captured
+# and failed in CI at 365, because the quit key arrived before the first frame.
+outcome=none
+for _ in $(seq 1 60); do
+    if grep -qF "$iface" "$log" 2>/dev/null;         then outcome=scanned; break; fi
+    if grep -qF 'datalink channel' "$log" 2>/dev/null; then outcome=refused; break; fi
+    sleep 1
+done
+
+printf 'q' >&3 || true
+exec 3>&-
+wait "$sc" 2>/dev/null || true
+rm -f "$fifo"
+
+test -s "$log"
+echo "--- captured $(wc -c < "$log") bytes, outcome=$outcome"
+
+plain=render.txt
+sed -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\r/\n/g' "$log" > "$plain"
+
+case "$outcome" in
+scanned)
+    # The privileged path: it opened the channel, so the whole UI must be there.
+    grep -qF '[?1049h' "$log"
+    grep -qF '[?1049l' "$log"
+    echo "--- alternate screen entered and left"
+    for want in Discovery Interfaces Packets Ports Traffic; do
+        grep -qF "$want" "$plain" || { echo "MISSING from render: $want" >&2; exit 1; }
+    done
+    upstream="$(dpkg-query -W -f='${Version}' netscanner)"; upstream="${upstream%%-*}"
+    grep -qF "$upstream" "$plain"
+    echo "PASS: opened a datalink channel and rendered $iface, the tab strip and the version"
+    ;;
+refused)
+    # The unprivileged path: the exact reason, not a generic failure. This is
+    # the behaviour debian/control documents, so it is asserted rather than
+    # assumed -- an earlier description claimed netscanner starts and reports no
+    # hosts, which is not what it does.
+    grep -qF 'Unable to create datalink channel' "$plain"
+    grep -qF 'Operation not permitted' "$plain"
+    echo "PASS: no CAP_NET_RAW, and netscanner said exactly that"
+    ;;
+*)
+    echo "FAIL: netscanner neither scanned nor reported why in 60s" >&2
+    sed -n '1,20p' "$plain" >&2
+    exit 1
+    ;;
+esac

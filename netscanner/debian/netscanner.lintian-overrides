@@ -1,0 +1,10 @@
+# Rust links its vendored C dependencies statically by design. Two here:
+# libyaml, from the configuration loader, and ieee-data, the OUI table
+# mac_oui embeds under its with-db feature so that vendor lookups work with
+# no network and no separate data package.
+netscanner: embedded-library
+
+# Upstream ships no man page and generates none; `netscanner --help` is the
+# documentation. Writing one here would mean inventing reference material for
+# a program this package only redistributes.
+netscanner: no-manual-page

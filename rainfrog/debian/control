@@ -1,0 +1,27 @@
+Source: rainfrog
+Section: database
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ rustup,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://github.com/achristmascarl/rainfrog
+
+Package: rainfrog
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: terminal UI for querying and browsing databases
+ rainfrog is a database client for the terminal. It lists schemas and tables,
+ renders query results in a scrollable grid, keeps a query history, and edits
+ SQL in a vim-style buffer, over PostgreSQL, MySQL and SQLite.
+ .
+ Two of upstream's default features are deliberately absent. DuckDB is built
+ here without it, because the crate bundles DuckDB's own C++ sources and
+ upstream's .cargo/config.toml sets DUCKDB_DOWNLOAD_LIB, which fetches a
+ prebuilt library over the network during the build. Oracle is absent because
+ that crate builds against Oracle's Instant Client, which is proprietary and
+ not in Debian. Clipboard support is present.

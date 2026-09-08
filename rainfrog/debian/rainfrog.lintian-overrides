@@ -1,0 +1,9 @@
+# Rust links its vendored C dependencies statically by design. Here it is the
+# YAML parser behind the configuration loader, built from sources inside the
+# crate tree rather than linked from the archive.
+rainfrog: embedded-library
+
+# Upstream ships no man page and generates none; `rainfrog --help` and the
+# in-application help are the documentation. Writing one here would mean
+# inventing reference material for a program this package only redistributes.
+rainfrog: no-manual-page

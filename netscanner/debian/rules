@@ -1,0 +1,80 @@
+#!/usr/bin/make -f
+
+# DEB_VERSION_UPSTREAM, used below to stamp the version and to assert the
+# binary agrees. Without this include the variable is empty and every
+# `grep -qF '$(DEB_VERSION_UPSTREAM)'` below becomes `grep -qF ''`, which
+# matches any line and passes while testing nothing.
+include /usr/share/dpkg/pkg-info.mk
+
+# Rust's equivalent of -trimpath. Without it the binary embeds the build
+# directory and a rebuild elsewhere produces different bytes.
+#
+# Upstream keeps no .cargo/config.toml, so this replaces no upstream rustflags.
+# RUSTFLAGS replaces rather than appends, so re-check on an upstream bump: a
+# rustflags line added to such a file would silently disappear.
+export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
+export CARGO_HOME := $(CURDIR)/.cargo
+
+# rustc is not a Debian package, so it is absent from .buildinfo's
+# Installed-Build-Depends. Pinning it here puts the version in debian/rules,
+# which ships inside the .dsc, so a rebuild resolves the same compiler.
+#
+# Upstream DOES ship rust-toolchain.toml, and it says channel = "stable" --
+# a record of whatever was current that day, not a pin, so a rebuild after the
+# next Rust release would not match and nothing would go red first. This env
+# var beats the file (rustup reports "environment override by
+# RUSTUP_TOOLCHAIN"). The floor is 1.85: Cargo.toml declares edition 2024.
+# Move it with each upstream bump.
+export RUSTUP_TOOLCHAIN := 1.98.1
+
+NS_COMMIT := $(shell cut -c1-9 debian/upstream-commit 2>/dev/null)
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	cargo clean
+	rm -rf $(CURDIR)/.cargo
+
+# build.rs derives the --version string by shelling out to `git rev-parse` and
+# `git describe`. The builder deletes the clone's .git before building, and
+# Command::output() returns Ok when git merely FAILS -- it errors only when the
+# binary cannot be spawned. So upstream's clean fallback (plain
+# CARGO_PKG_VERSION) is reached only on a host with no git at all: where git is
+# installed, `git describe` fails, stdout is empty, and the version stamps as
+# "v0.6.43-" with a trailing separator. The embedded string therefore depends on
+# whether an undeclared package happens to be present, which is the defect
+# i3status-rust 0.36.1-1 shipped.
+#
+# Replaced rather than patched: the whole file is that lookup plus a Windows
+# npcap SDK download, and the two values wanted are already in the source
+# package. action-debian-build >= v1.6.0 writes the cloned revision to
+# debian/upstream-commit, which ships inside the .dsc.
+execute_before_dh_auto_build:
+	# Asserted non-empty BEFORE use. An empty value does not announce itself:
+	# it turns the greps below into `grep -qF ''`, which passes on anything.
+	test -n '$(NS_COMMIT)'
+	test -n '$(DEB_VERSION_UPSTREAM)'
+	printf 'fn main() {\n    println!("cargo:rustc-env=_GIT_INFO=%s (commit %s)");\n}\n' \
+		'$(DEB_VERSION_UPSTREAM)' '$(NS_COMMIT)' > build.rs
+	grep -qF '$(NS_COMMIT)' build.rs
+	! grep -qF 'rev-parse' build.rs
+	! grep -qF 'npcap' build.rs
+
+# --locked, so the build uses upstream's Cargo.lock exactly rather than
+# resolving fresh versions on the day.
+override_dh_auto_build:
+	cargo build --release --locked
+	# The WHOLE first line, not its parts. Asserting that each piece is merely
+	# PRESENT is how rainfrog shipped "0.4.5-0.4.5 (commit ...)" past a green
+	# build in this same wave: every individual grep matched.
+	./target/release/netscanner --version | head -1 \
+		| grep -qxF 'netscanner $(DEB_VERSION_UPSTREAM) (commit $(NS_COMMIT))'
+
+# Upstream's tests want a live network and a populated OUI database. Function is
+# covered by debian/tests, which exercises the built package.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 target/release/netscanner \
+		debian/netscanner/usr/bin/netscanner

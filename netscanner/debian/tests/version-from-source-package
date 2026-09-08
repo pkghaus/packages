@@ -1,0 +1,49 @@
+#!/bin/sh
+# The version string must come from the source package, not from the build host.
+#
+# Upstream's build.rs shells out to `git describe`. The builder deletes the
+# clone's .git, and Command::output() returns Ok when git merely FAILS -- it
+# errors only when git cannot be spawned. So the embedded string depends on
+# whether git happens to be installed: with git present the describe fails, its
+# stdout is empty, and the version stamps as "v0.6.43-" with a trailing
+# separator; with git absent upstream's clean fallback gives a bare version.
+# debian/rules replaces build.rs and stamps the version and the cloned revision
+# from the source package instead.
+#
+# Asserted here rather than only in debian/rules because this runs against the
+# INSTALLED package, so it also catches a binary that was built correctly and
+# then replaced.
+set -eu
+
+: "${AUTOPKGTEST_TMP:?}"
+
+ver="$(dpkg-query -W -f='${Version}' netscanner)"
+# The upstream part, without the Debian revision or the suite qualifier.
+upstream="${ver%%-*}"
+echo "--- installed: $ver   upstream part: $upstream"
+
+out="$(netscanner --version 2>&1)"
+printf -- '--- netscanner --version:\n%s\n' "$out"
+
+# 1. The upstream version is present.
+printf '%s' "$out" | grep -qF "$upstream"
+
+# 2. A commit is present, and it is a 9-character hex abbreviation rather than
+#    an empty field. This is the assertion the trailing-dash bug fails.
+printf '%s' "$out" | grep -qE '\(commit [0-9a-f]{9}\)'
+
+# 3. And neither of the two broken shapes upstream produces on its own.
+#    Spelled as an if rather than `! cmd`: POSIX says errexit is IGNORED for a
+#    pipeline beginning with `!`, so the negative form would never fail the
+#    test -- an assertion that cannot fail, which is the defect these tests
+#    exist to catch elsewhere.
+if printf '%s' "$out" | grep -qE "v${upstream}-( |$)"; then
+    echo "FAIL: version carries upstream's empty-git-describe trailing separator" >&2
+    exit 1
+fi
+if printf '%s' "$out" | grep -qE '\(commit *\)'; then
+    echo "FAIL: the commit field is empty" >&2
+    exit 1
+fi
+
+echo "PASS: the version and revision came from the source package"

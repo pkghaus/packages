@@ -1,0 +1,13 @@
+Tests: version-from-source-package
+# No extra dependencies: the assertion is about the binary's own embedded
+# strings, and needing anything here would itself be a finding.
+Depends: @
+Restrictions: allow-stderr
+
+Tests: query-sqlite
+# util-linux for script(1)'s pty, sqlite3 to create the database rainfrog is
+# asked to read. Deliberately no ca-certificates: rainfrog links rustls, and
+# the testbed's empty trust store is what would catch it aborting at client
+# construction the way lychee did.
+Depends: @, util-linux, sqlite3
+Restrictions: allow-stderr

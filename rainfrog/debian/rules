@@ -1,0 +1,117 @@
+#!/usr/bin/make -f
+
+# DEB_VERSION_UPSTREAM, used below to stamp the version and to assert the
+# binary agrees. Without this include the variable is empty and the
+# `grep -qF '$(DEB_VERSION_UPSTREAM)'` checks become `grep -qF ''`, which
+# matches any line and passes while testing nothing.
+include /usr/share/dpkg/pkg-info.mk
+
+# Rust's equivalent of -trimpath. Without it the binary embeds the build
+# directory and a rebuild elsewhere produces different bytes.
+#
+# Upstream's .cargo/config.toml sets only [env] DUCKDB_DOWNLOAD_LIB, no
+# target.*.rustflags, so this replaces nothing. RUSTFLAGS replaces rather than
+# appends: re-check that file on an upstream bump, because a rustflags line
+# added there would silently disappear.
+export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
+
+# NOT $(CURDIR)/.cargo, which is the estate's usual spelling for this. Upstream
+# keeps its own .cargo/config.toml, and pointing CARGO_HOME there makes the
+# clean target delete an upstream source file -- the failure i3status-rust hit,
+# where it surfaced two steps later as a missing cargo alias.
+export CARGO_HOME := $(CURDIR)/.cargo-home
+
+# rustc is not a Debian package, so it is absent from .buildinfo's
+# Installed-Build-Depends. Pinning it here puts the version in debian/rules,
+# which ships inside the .dsc, so a rebuild resolves the same compiler.
+# Upstream ships no rust-toolchain.toml, so without this the build takes
+# whatever stable is current on the day. The floor is 1.88, which Cargo.toml
+# declares as rust-version. Move it with each upstream bump.
+export RUSTUP_TOOLCHAIN := 1.98.1
+
+RF_COMMIT := $(shell cut -c1-9 debian/upstream-commit 2>/dev/null)
+RF_DATE := $(shell date -u -d @$(SOURCE_DATE_EPOCH) +%Y-%m-%d)
+
+# Upstream's default features are duckdb, arboard and oracle. Two cannot be
+# built here and their absence is disclosed in the package description:
+#
+#   duckdb  the crate is declared features = ["bundled"], so it compiles
+#           DuckDB's own C++ sources, and upstream's .cargo/config.toml sets
+#           DUCKDB_DOWNLOAD_LIB=1, which fetches a prebuilt library over the
+#           network instead. A Debian build has no network and a downloaded
+#           binary is not a source build either way.
+#   oracle  builds against Oracle Instant Client (ODPI-C), which is
+#           proprietary and not packaged in Debian.
+#
+# arboard is kept: it reaches X11 through x11rb and Wayland through
+# wl-clipboard-rs, both pure Rust, so it adds no system dependency.
+# PostgreSQL, MySQL and SQLite are not features -- sqlx carries them
+# unconditionally -- so no backend is lost with the defaults off.
+CARGO_FEATURES := --no-default-features --features arboard
+
+%:
+	dh $@
+
+# Every dh_auto_* step is overridden because upstream ships a Makefile, which dh
+# detects as the build system. Its first target is `dev`, which runs the app
+# against a live database, so an unoverridden step would try to start one.
+override_dh_auto_clean:
+	cargo clean
+	rm -rf $(CURDIR)/.cargo-home
+
+# build.rs runs vergen, which embeds the git describe output, a build timestamp,
+# the rustc and cargo versions, and -- through SysinfoBuilder -- the build host's
+# CPU brand, memory and user name. The builder deletes the clone's .git, so the
+# git half degrades to a placeholder, which is the bug viddy shipped. The
+# sysinfo half is worse: it makes the binary differ on every machine, and no
+# .buildinfo field records any of it, so nothing would go red.
+#
+# Only two of those values are ever read: src/ uses VERGEN_GIT_DESCRIBE and
+# VERGEN_BUILD_DATE and nothing else. Both come from the source package here --
+# the cloned revision from debian/upstream-commit, which ships inside the .dsc,
+# and the date from SOURCE_DATE_EPOCH, which dpkg records in .buildinfo.
+execute_before_dh_auto_build:
+	# Asserted non-empty BEFORE use, or the greps below become `grep -qF ''`.
+	test -n '$(RF_COMMIT)'
+	test -n '$(DEB_VERSION_UPSTREAM)'
+	test -n '$(RF_DATE)'
+	# GIT_DESCRIBE carries the commit ALONE. src/utils.rs composes the string as
+	# CARGO_PKG_VERSION "-" VERGEN_GIT_DESCRIBE " (" VERGEN_BUILD_DATE ")", so a
+	# value that repeats the version renders "0.4.5-0.4.5 (commit ...)". The
+	# first attempt here did exactly that and the build passed, because the
+	# assertion below only checked the version was PRESENT rather than exact.
+	printf 'fn main() {\n    println!("cargo:rustc-env=VERGEN_GIT_DESCRIBE=%s");\n    println!("cargo:rustc-env=VERGEN_BUILD_DATE=%s");\n}\n' \
+		'$(RF_COMMIT)' '$(RF_DATE)' > build.rs
+	grep -qF '$(RF_COMMIT)' build.rs
+	grep -qF '$(RF_DATE)' build.rs
+	! grep -qF 'vergen' build.rs
+	! grep -qF 'Sysinfo' build.rs
+
+override_dh_auto_build:
+	cargo build --release --locked $(CARGO_FEATURES)
+	# The absent features must actually be absent, or a dropped CARGO_FEATURES
+	# silently downloads DuckDB and fails to find Oracle's client.
+	#
+	# Globbed, because cargo names these directories <crate>-<16 hex>. The first
+	# version of this assertion tested the bare names and so could never match:
+	# it passed whether or not the crates were built, which is the whole defect
+	# it was written to prevent.
+	#
+	# The count is the control. If cargo's layout ever moves, it fails loudly
+	# here rather than leaving the two negatives passing against a path that no
+	# longer exists.
+	test "$$(ls -1d target/release/build/*/ 2>/dev/null | wc -l)" -gt 0
+	! ls -d target/release/build/libduckdb-sys-*/ >/dev/null 2>&1
+	! ls -d target/release/build/oracle-*/ >/dev/null 2>&1
+	# The WHOLE composed string, not its parts. Asserting presence rather than
+	# shape is what let "0.4.5-0.4.5 (commit d8b0c8d08)" through a green build:
+	# every individual grep matched.
+	./target/release/rainfrog --version \
+		| grep -qxF 'rainfrog $(DEB_VERSION_UPSTREAM)-$(RF_COMMIT) ($(RF_DATE))'
+
+# Upstream's tests want live PostgreSQL, MySQL and DuckDB instances, which is
+# what the Makefile's db-up target is for. Function is covered by debian/tests.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 target/release/rainfrog debian/rainfrog/usr/bin/rainfrog

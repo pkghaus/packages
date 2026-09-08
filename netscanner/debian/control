@@ -1,0 +1,27 @@
+Source: netscanner
+Section: net
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ debhelper-compat (= 13),
+ rustup,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://github.com/Chleba/netscanner
+
+Package: netscanner
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: terminal network scanner and diagnostic tool
+ netscanner is a terminal interface for surveying the network a machine is
+ attached to: it sweeps a CIDR range for live hosts, resolves their vendor
+ from the MAC prefix, scans ports, watches ARP and DHCP traffic, and plots
+ per-host throughput.
+ .
+ It builds raw packets rather than shelling out to other tools, so it needs
+ CAP_NET_RAW. Run it as root, or grant the capability to the binary with
+ "setcap cap_net_raw+ep /usr/bin/netscanner". Without it netscanner exits
+ immediately with "Unable to create datalink channel: Operation not permitted"
+ rather than starting in a reduced mode.
