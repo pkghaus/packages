@@ -25,11 +25,41 @@ sqlite3 "$db" "CREATE TABLE ${table} (id INTEGER PRIMARY KEY, note TEXT);"
 test -s "$db"
 echo "--- created table $table in $db"
 
+# Driven by WHAT IS ON SCREEN, not by a fixed sleep. netscanner's sibling test
+# passed locally and failed in CI on exactly that: the quit key arrived before
+# the first frame and the capture was 365 bytes instead of 8674.
 log=render.log
-( sleep 7; printf 'q' ) | timeout 60 \
-  script -qec "stty rows 40 cols 140; rainfrog --url sqlite://${db}" "$log" >/dev/null 2>&1 || true
+fifo=stdin.fifo
+# SIGPIPE ignored around the fifo write below. If the program under test has
+# already exited -- which is exactly what a stubbed or broken binary does -- the
+# write kills this script with 141 before the explicit failure message can be
+# printed, turning a clear "never rendered" verdict into a bare signal.
+trap '' PIPE
+mkfifo "$fifo"
+timeout 120 script -qec "stty rows 40 cols 140; rainfrog --url sqlite://${db}" \
+  "$log" < "$fifo" >/dev/null 2>&1 &
+sc=$!
+# Held open, or rainfrog sees EOF on stdin and exits before connecting.
+exec 3> "$fifo"
+
+# Wait for the table, which is the round-trip this test exists to prove.
+rendered=no
+for _ in $(seq 1 90); do
+    if grep -qF "$table" "$log" 2>/dev/null; then rendered=yes; break; fi
+    sleep 1
+done
+
+printf 'q' >&3 || true
+exec 3>&-
+wait "$sc" 2>/dev/null || true
+rm -f "$fifo"
+
 test -s "$log"
-echo "--- captured $(wc -c < "$log") bytes"
+echo "--- captured $(wc -c < "$log") bytes after render=$rendered"
+if [ "$rendered" != yes ]; then
+    echo "FAIL: $table never appeared in 90s; rainfrog did not query the database" >&2
+    exit 1
+fi
 
 # Entry and exit from the alternate screen, asserted apart from the content so
 # a dead TUI and a changed layout fail differently.

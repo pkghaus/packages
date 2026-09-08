@@ -25,11 +25,44 @@ done
 : "${iface:?no non-loopback interface in the testbed}"
 echo "--- expecting netscanner to discover interface: $iface"
 
+# Driven by WHAT IS ON SCREEN, not by a fixed sleep. A `sleep 5; printf q`
+# pipeline passed locally at 8674 bytes captured and failed in CI at 365: the
+# quit key arrived before the first frame, so the TUI entered and left the
+# alternate screen having drawn nothing. A timing-dependent test is worse than
+# no test, because CI retries once and a slow runner fails both attempts.
 log=render.log
-( sleep 5; printf 'q' ) | timeout 40 \
-  script -qec "stty rows 40 cols 140; netscanner --tick-rate 4 --frame-rate 8" "$log" >/dev/null 2>&1 || true
+fifo=stdin.fifo
+# SIGPIPE ignored around the fifo write below. If the program under test has
+# already exited -- which is exactly what a stubbed or broken binary does -- the
+# write kills this script with 141 before the explicit failure message can be
+# printed, turning a clear "never rendered" verdict into a bare signal.
+trap '' PIPE
+mkfifo "$fifo"
+timeout 90 script -qec "stty rows 40 cols 140; netscanner --tick-rate 4 --frame-rate 8" \
+  "$log" < "$fifo" >/dev/null 2>&1 &
+sc=$!
+# Held open, or netscanner sees EOF on stdin and exits before rendering.
+exec 3> "$fifo"
+
+# Wait for the interface to appear, which is the strongest thing this test
+# asserts and therefore the right thing to wait for.
+rendered=no
+for _ in $(seq 1 60); do
+    if grep -qF "$iface" "$log" 2>/dev/null; then rendered=yes; break; fi
+    sleep 1
+done
+
+printf 'q' >&3 || true
+exec 3>&-
+wait "$sc" 2>/dev/null || true
+rm -f "$fifo"
+
 test -s "$log"
-echo "--- captured $(wc -c < "$log") bytes"
+echo "--- captured $(wc -c < "$log") bytes after render=$rendered"
+if [ "$rendered" != yes ]; then
+    echo "FAIL: $iface never appeared in 60s of rendering" >&2
+    exit 1
+fi
 
 # Entry and exit from the alternate screen, asserted separately from the
 # rendered words: a dead TUI and a changed layout then fail differently.
