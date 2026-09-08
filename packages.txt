@@ -30,8 +30,10 @@ kudu
 lychee
 mandown
 monolith
+netscanner
 ouch
 pkghaus-archive-keyring
+rainfrog
 rathole
 rustic
 superfile
