@@ -19,8 +19,21 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 pass=0
 fail=0
 
-ok() { printf '  ok   %s\n' "$1"; pass=$((pass + 1)); }
-no() { printf '  FAIL %s\n    %s\n' "$1" "$2"; fail=$((fail + 1)); }
+# What stops this suite reporting success for work it did not do. Groups report
+# failure by exit status, which catches an assertion that FAILS and says nothing
+# about one that never RAN -- a group returning early, a renamed helper, a
+# fixture that stopped being built. Without the count, a group that quietly
+# stops asserting still prints "all tests passed".
+#
+# The count goes through a file because a variable incremented in a subshell
+# never reaches this scope; traps reset in subshells, so the cleanup fires once.
+# Update the number deliberately: that edit is someone noticing it moved.
+EXPECTED_ASSERTIONS=172
+TALLY="$(mktemp)"
+trap 'rm -f "$TALLY"' EXIT
+
+ok() { printf '  ok   %s\n' "$1"; pass=$((pass + 1)); echo ok >> "$TALLY"; }
+no() { printf '  FAIL %s\n    %s\n' "$1" "$2"; fail=$((fail + 1)); echo no >> "$TALLY"; }
 
 eq() { # label expected actual
     if [ "$2" = "$3" ]; then ok "$1"; else no "$1" "got [$3] want [$2]"; fi
@@ -1088,8 +1101,16 @@ echo "published check"
 ) || fail=$((fail + 1))
 
 echo
+ran="$(wc -l < "$TALLY")"
+if [ "$ran" -ne "$EXPECTED_ASSERTIONS" ]; then
+    echo "FAIL: $ran assertions ran, expected $EXPECTED_ASSERTIONS."
+    echo "      An assertion was skipped, not failed -- look for a group that"
+    echo "      exited early, a renamed helper, or a fixture that stopped being"
+    echo "      built. If the change was deliberate, update EXPECTED_ASSERTIONS."
+    exit 1
+fi
 if [ "$fail" -eq 0 ]; then
-    echo "all tests passed"
+    echo "all $ran assertions passed"
 else
     echo "$fail failing test group(s)"
 fi
