@@ -8,12 +8,11 @@
 # the archive serves, and a release in progress looks exactly like one that
 # failed: the changelog is on master and the archive is not caught up yet.
 #
-# On 2026-09-02 that produced a dashboard issue asserting "a release build
-# failed after the changelog landed" about a release that was, at that moment,
-# succeeding. The drift run started at 13:20:38Z and the release it accused at
-# 13:20:39Z -- one second apart, and the release finished ninety seconds after
-# the issue was filed. A dashboard that names a cause it has not established is
-# worse than one that says nothing, because it is the only thing anyone reads.
+# Without this, a drift run starting one second before the release it accuses
+# files an issue asserting "a release build failed after the changelog landed"
+# about a release that goes on to succeed ninety seconds later. A dashboard
+# naming a cause it has not established is worse than one that says nothing,
+# because it is the only thing anyone reads.
 #
 # Both halves matter: the tag and the archive dispatch come from the release
 # workflow here, and the publish itself is a separate run in the archive repo,

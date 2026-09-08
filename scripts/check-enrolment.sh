@@ -18,11 +18,11 @@ ROOT="${ROOT:-.}"
 missing=0
 enrolled=0
 # The names as this script understands them, so the staged check below asks the
-# same question this loop answered. It used to `grep -qx` the raw file, which
-# disagreed with the stripping here: a line with trailing whitespace counted as
-# enrolled AND reported its own directory as "staged, not enrolled". Harmless
-# -- neither count gates anything -- but a report that contradicts itself is
-# read as a broken check rather than a broken file.
+# same question this loop answered. A `grep -qx` against the raw file disagrees
+# with the stripping here: a line with trailing whitespace counts as enrolled
+# AND reports its own directory as "staged, not enrolled". Harmless -- neither
+# count gates anything -- but a report that contradicts itself reads as a broken
+# check rather than a broken file.
 #
 # Space-delimited membership is safe because a Debian source name cannot
 # contain whitespace.

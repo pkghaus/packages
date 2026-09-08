@@ -4,8 +4,8 @@ name: Release
 # builds it across every suite and architecture, tags it, and tells the archive
 # to ingest. Nobody types a git command.
 #
-# Why the tag this creates is lightweight, when every release before 2026-08-30
-# carried a detached signature: no GitHub API signs a tag. createCommitOnBranch
+# Why the tag this creates is lightweight rather than signed: no GitHub API
+# signs a tag. createCommitOnBranch
 # is the only signing mutation GraphQL exposes, and it signs commits. So the
 # choice was never "signed tag or unsigned tag" -- it was which object carries
 # the attestation. The merge commit already carries one: GitHub signs it

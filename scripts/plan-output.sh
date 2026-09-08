@@ -9,11 +9,9 @@
 #
 # <name> defaults to "matrix"; build.yml's plan calls its output "packages".
 #
-# Written out four times before this -- build.yml, bump.yml, and twice inside
-# release.yml's plan step, which grew a dispatch path beside its push path and
-# copied the block rather than sharing it. Each copy re-derived the same count
-# and re-set the same boolean, and only one of the four carried the note
-# explaining why it is a boolean at all.
+# One file because the alternative is four copies -- build.yml, bump.yml, and
+# both paths of release.yml's plan step -- each re-deriving the same count and
+# re-setting the same boolean, with the note below on at most one of them.
 #
 # That note is the reason this is worth a file. has_work is a string "true" or
 # "false", never a count the caller compares: a step output that never got set
@@ -32,9 +30,9 @@ shopt -s inherit_errexit
 json="${1?usage: plan-output.sh <json-array> [name]}"
 name="${2:-matrix}"
 
-# Counted by parsing, not by grepping for a key. bump.yml used to count
-# occurrences of the string "package", which is right only for its own row
-# shape and silently wrong for build.yml's array of plain strings.
+# Counted by parsing, not by grepping for a key. Counting occurrences of the
+# string "package" is right only for bump.yml's row shape and silently wrong
+# for build.yml's array of plain strings.
 count="$(printf '%s' "$json" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
 
 has_work=false

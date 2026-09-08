@@ -70,7 +70,7 @@ echo "upstream bump"
 
     # Regression: the entry was built through $(printf ...), which strips
     # trailing newlines, so the trailer was welded onto the previous entry's
-    # first line and the changelog no longer parsed past entry one.
+    # first line, so the changelog does not parse past entry one.
     eq "the trailer is followed by a blank line, then the previous entry" \
        "" "$(sed -n '6p' "$work/a/debian/changelog")"
     eq "the previous entry survives intact" \
@@ -81,12 +81,11 @@ echo "upstream bump"
     # checkout mtime and that leg's source package stops matching the others'.
     # action-debian-build refuses the build for exactly that.
     #
-    # The bump used to leave the tree in that state whenever `date -R` crossed a
-    # second boundary after the checkout: the entry truncates to whole seconds,
-    # so landing in the same second left the files newer and landing in the next
-    # left every one of them older. About one run in sixty, which is how it
-    # reached production and took one leg of vale's three on 2026-09-03 while
-    # the other two, stamped a second earlier, passed.
+    # `date -R` crossing a second boundary after the checkout leaves the tree in
+    # that state: the entry truncates to whole seconds, so landing in the same
+    # second leaves the files newer and landing in the next leaves every one of
+    # them older. About one run in sixty, enough to take one leg of a three-leg
+    # build while the other two, stamped a second earlier, pass.
     make_pkg "$work/mt" mt 1.0.0 "3.0 (quilt)"
     find "$work/mt" -exec touch {} +
     ( bump "$work/mt" v1.1.0 >/dev/null 2>&1 )
@@ -170,9 +169,9 @@ echo "bump plan"
 
     out="$(plan)"
 
-    # The regression this exists for: the row append was once deleted while the
-    # open-pull-request check that used to sit above it was rewritten, so the
-    # plan detected drift and emitted nothing. It ran green for a day because
+    # The regression this exists for: deleting the row append while rewriting
+    # the check above it leaves the plan detecting drift and emitting nothing.
+    # That runs green for as long as
     # every package happened to be current, and an empty plan is
     # indistinguishable from a correct one until something is actually behind.
     eq "a package behind upstream produces a row" \
@@ -297,8 +296,7 @@ FAKE
     GH_404_PATH="releases/latest" GH_FAIL_PATH="__none__"
 
     # 120 tags, and the newest is the LAST line -- the position a 100-item
-    # first page would have cut off. This is the assertion the old fallback
-    # could not pass.
+    # first page would cut off. A fallback that reads one page cannot pass this.
     # Built with seq/awk, not a shell loop appending $(printf ...): command
     # substitution strips trailing newlines, so that concatenates all 120 refs
     # onto ONE line and awk sees a single unparseable record.
@@ -311,7 +309,7 @@ FAKE
     # --- a second forge --------------------------------------------------
     # Codeberg runs Forgejo. gh cannot speak to it, so the gh stub must NOT be
     # consulted, and both the API base and the clone URL have to follow the
-    # host. Verified against the real service on 2026-09-06: ziglang/zig has no
+    # host. Verified against the real service: ziglang/zig has no
     # releases (404, resolves through the tag list) and fairyglade/ly answers
     # 200 with tag_name v1.4.1.
     # API_BASE unset here so forge_api_base supplies the real Codeberg base and
@@ -391,8 +389,8 @@ FAKE
     # --- and the curl path ------------------------------------------------
     # PATH is narrowed to the stub directory alone, not merely emptied of the
     # gh stub: `command -v gh` finds the REAL gh in /usr/bin otherwise, and the
-    # curl branch is never reached. The first version of these assertions
-    # passed against live GitHub 404s without touching the code under test.
+    # curl branch is never reached -- these assertions would then pass against
+    # live GitHub 404s without touching the code under test.
     #
     # The curl branch needs only builtins plus curl, so a one-entry PATH is
     # enough.
@@ -521,9 +519,9 @@ echo "release in flight"
        "$(ARCHIVE_REPO=pkghaus/does-not-exist-xyz "$inflight")"
 
     # A gh that succeeds and says nothing. Distinct from the failures above:
-    # `|| printf unknown` never fires, so an empty answer used to reach the
-    # numeric test as "" and fall through to "no" -- the false-accusation
-    # direction this whole script exists to avoid.
+    # `|| printf unknown` never fires, so an empty answer reaches the numeric
+    # test as "" and falls through to "no" -- the false-accusation direction
+    # this whole script exists to avoid.
     stub="$(mktemp -d)"
     printf '#!/bin/sh\nexit 0\n' > "$stub/gh"
     chmod +x "$stub/gh"
@@ -531,7 +529,7 @@ echo "release in flight"
        "$(PATH="$stub:$PATH" "$inflight")"
 
     # And the same emptiness on one repo only, where a numeric answer from the
-    # other used to mask it through string concatenation.
+    # other masks it through string concatenation.
     printf '%s\n' '#!/bin/sh' \
         'case "$*" in *does-not-exist-xyz*) exit 0 ;; esac' \
         'printf 0' > "$stub/gh"
@@ -953,8 +951,8 @@ echo "keyring guard"
     eq "a bot may not touch the keyring"       "1" "$(run "$b3")"
 
     # The range, not just the tip. The bad commit has to sit BEHIND the tip for
-    # this to test anything -- the first version of this assertion put it AT the
-    # tip, so a check that read only the tip still passed it. Caught by mutating
+    # this to test anything -- placed AT the tip, a check that reads only the
+    # tip still passes. Caught by mutating
     # rev-list to -1.
     mk "Martin Simon" README.md
     eq "a bad commit behind the tip still fails" "1" "$(run "$b3")"
@@ -972,8 +970,8 @@ echo "keyring guard"
     eq "a noreply address alone is not a bot"  "0" "$(run "$(git -C "$work" rev-parse HEAD~1)")"
 
     # github.event.before is all-zeros on a branch's first push and empty on
-    # events carrying no before. Both used to be normalised in the workflow, in
-    # three separate copies no test could reach; the script owns it now.
+    # events carrying no before. The script owns that normalisation, rather than
+    # three copies in the workflow that no test can reach.
     mk "github-actions[bot]" pkghaus-archive-keyring/keys/pkg.asc
     eq "an all-zeros before still catches the bot" "1" \
        "$(run 0000000000000000000000000000000000000000)"

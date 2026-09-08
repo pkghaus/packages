@@ -19,13 +19,12 @@ name: Bump upstream versions
 # run's aggregate -- one broken package must not hold every other package's bump
 # for as long as it stays broken.
 #
-# This used to open pull requests, which put a person between the bump and the
-# archive. Removing them removed two things that person was doing without being
-# asked. They could tell which package had failed, because a failed one had no
-# pull request and its dashboard row's link column was empty; and if a release
-# build failed after a merge they might connect the red run to what they had
-# just merged. The dashboard states both -- why a bump did not land, and which
-# packages carry a changelog the archive does not serve -- because otherwise the
+# No pull requests: a bump that verifies lands directly. That removes a person
+# who was doing two things without being asked -- telling which package had
+# failed, from the empty link column of a row with no pull request, and
+# connecting a red release run to the merge that caused it. The dashboard states
+# both -- why a bump did not land, and which packages carry a changelog the
+# archive does not serve -- because otherwise the
 # failure mode of all this is silence.
 #
 # It states only those. A bump that built, tested, landed and published is not
@@ -49,13 +48,11 @@ on:
     #
     # Affordable because a bump that passes lands in the same run, so a package
     # is behind for exactly one run and is never rebuilt for work already done.
-    # The plan used to skip a package whose version had an open pull request,
-    # for the era when landing meant waiting for a human to merge; nothing has
-    # opened such a pull request since bumps started landing directly, so that
-    # check was 25 gh calls a run that could not match, and it is gone. What
-    # does still rebuild every six hours is a bump that keeps FAILING
-    # verification, until upstream moves or the packaging is fixed. That is the
-    # real repeated cost, the pull-request check never addressed it, and the
+    # No open-pull-request check: nothing opens one now that bumps land
+    # directly, so it would be 25 gh calls a run that cannot match. What does
+    # rebuild every six hours is a bump that keeps FAILING verification, until
+    # upstream moves or the packaging is fixed. That is the real repeated cost,
+    # a pull-request check never addressed it, and the
     # dashboard names the package so it does not run on unseen.
     - cron: '17 */6 * * *'
   workflow_dispatch:
@@ -303,10 +300,10 @@ jobs:
           #
           # Not while a release is running. The comparison cannot tell a release
           # in progress from one that failed -- in both, the changelog is on
-          # master and the archive is not caught up -- and on 2026-09-02 it
-          # accused a release that was succeeding as it wrote, having started
-          # one second earlier. A real failure is still reported, six hours
-          # later, by a run with nothing in flight.
+          # master and the archive is not caught up -- so a run starting one
+          # second earlier accuses a release that is succeeding as it writes. A
+          # real failure is still reported, six hours later, by a run with
+          # nothing in flight.
           in_flight="$(scripts/release-in-flight.sh)"
           stuck='[]'
           published_checked=no
