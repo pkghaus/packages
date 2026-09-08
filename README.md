@@ -75,18 +75,21 @@ the package from the archive, which is a separate deliberate act.
 
 A scheduled workflow checks every enrolled package against its upstream every
 six hours, and lands a commit on `master` for each one that has fallen behind.
-rewrites
-`package.conf`'s `VERSION` and adds a `debian/changelog` entry, and nothing
-else.
+That commit rewrites `package.conf`'s `VERSION` and adds a `debian/changelog`
+entry, and nothing else.
 
 **Every upstream tag is tracked.** There is no staleness threshold and no
 filtering: a different tag string from the one in `package.conf` is the whole
 rule. Some upstreams release often, croc cut six in five days in August, and
 the cost of following all of them is accepted deliberately.
 
-Upstream's newest release comes from GitHub's `releases/latest`, which is
+Upstream's newest release comes from the forge's `releases/latest`, which is
 upstream's own declaration of what counts as released, with a sorted-tag
-fallback for projects that publish no releases. Deliberately not `debian/watch`
+fallback for projects that publish no releases. GitHub and Codeberg are both
+resolved: Forgejo's REST API is GitHub-shaped for the two things asked of it,
+so only the base URL and the client change. An unrecognised host is a hard
+failure rather than a guess at GitHub's API, because a wrong base URL 404s on
+every path and a 404 is read as "no release". Deliberately not `debian/watch`
 and uscan: a tag carries no prerelease flag, so a watch file reports whichever
 string sorts highest, which on one fleet upstream is a release candidate.
 Watch files are still owed for Debian policy; they are not this.
@@ -120,9 +123,9 @@ is visible, so it carries what a person watching merges would have noticed
 without being asked:
 
 - **A status per row.** `landed, releasing`, `verification failed`,
-  `not verified`. It used to print one line for the whole run, and which package
-  it meant could be inferred from an empty pull-request column. There are no
-  pull requests now, so nothing is left to infer from.
+  `not verified`. One line for the whole run would not say which package it
+  meant, and with no pull requests there is no empty link column left to infer
+  it from.
 - **Packages the archive does not serve.** If a release build fails after the
   changelog has landed, `package.conf` still matches upstream, so the drift
   check calls the package current while users get the old version, and nothing
