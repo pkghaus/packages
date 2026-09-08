@@ -1,3 +1,9 @@
+croc (11.5.1-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Tue, 08 Sep 2026 21:12:05 +0000
+
 croc (11.5.0-1) unstable; urgency=medium
 
   * New upstream release
