@@ -1,0 +1,58 @@
+#!/bin/sh
+# netscanner is a full-screen TUI with no non-interactive mode, so the gate is
+# rendering one. It has to do real work to pass: the interface name asserted
+# below is read from the testbed at run time, so a binary that draws an empty
+# frame or prints constants fails.
+#
+# The pty comes from script(1) and MUST be given a size -- its default is 0x0
+# and a TUI with no room renders nothing while still exiting 0.
+set -eu
+
+: "${AUTOPKGTEST_TMP:?}"
+
+HOME="$AUTOPKGTEST_TMP/home"
+export HOME TERM=xterm-256color
+mkdir -p "$HOME"
+cd "$AUTOPKGTEST_TMP"
+
+# What the testbed actually has, so the assertion cannot pass on a constant.
+iface=""
+for d in /sys/class/net/*; do
+    n="${d##*/}"
+    [ "$n" = lo ] && continue
+    iface="$n"; break
+done
+: "${iface:?no non-loopback interface in the testbed}"
+echo "--- expecting netscanner to discover interface: $iface"
+
+log=render.log
+( sleep 5; printf 'q' ) | timeout 40 \
+  script -qec "stty rows 40 cols 140; netscanner --tick-rate 4 --frame-rate 8" "$log" >/dev/null 2>&1 || true
+test -s "$log"
+echo "--- captured $(wc -c < "$log") bytes"
+
+# Entry and exit from the alternate screen, asserted separately from the
+# rendered words: a dead TUI and a changed layout then fail differently.
+grep -qF '[?1049h' "$log"
+grep -qF '[?1049l' "$log"
+echo "--- alternate screen entered and left"
+
+plain=render.txt
+sed -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\r/\n/g' "$log" > "$plain"
+
+# The tab strip. Several, so a single renamed tab does not pass the test on its
+# own, and a blank screen fails on all of them.
+for want in Discovery Interfaces Packets Ports Traffic; do
+    grep -qF "$want" "$plain" || { echo "MISSING from render: $want" >&2; exit 1; }
+done
+echo "--- tab strip rendered"
+
+# The real interface, discovered at run time by netscanner itself.
+grep -qF "$iface" "$plain"
+echo "--- discovered $iface"
+
+# And the version in the footer, which is the same string debian/rules stamped.
+upstream="$(dpkg-query -W -f='${Version}' netscanner)"; upstream="${upstream%%-*}"
+grep -qF "$upstream" "$plain"
+
+echo "PASS: rendered the interface, the tab strip and the version"

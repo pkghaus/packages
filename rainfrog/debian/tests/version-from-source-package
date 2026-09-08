@@ -1,0 +1,41 @@
+#!/bin/sh
+# The version string must come from the source package, not the build host.
+#
+# Upstream's build.rs runs vergen: the git half degrades to a placeholder once
+# the builder deletes the clone's .git (the bug viddy shipped), and
+# SysinfoBuilder embeds the build machine's CPU, memory and user name, which no
+# .buildinfo field records. debian/rules replaces build.rs and supplies the
+# cloned revision and SOURCE_DATE_EPOCH instead.
+#
+# Asserted on SHAPE, not on presence. src/utils.rs composes the string as
+# CARGO_PKG_VERSION "-" VERGEN_GIT_DESCRIBE " (" VERGEN_BUILD_DATE ")", so a
+# GIT_DESCRIBE that repeats the version renders "0.4.5-0.4.5 (commit ...)".
+# That shipped past a green build here, because every individual grep matched.
+set -eu
+
+: "${AUTOPKGTEST_TMP:?}"
+
+ver="$(dpkg-query -W -f='${Version}' rainfrog)"
+upstream="${ver%%-*}"
+line="$(rainfrog --version 2>/dev/null | head -1)"
+echo "--- installed $ver"
+echo "--- version line: $line"
+
+# version-commit (date), and nothing else on the line.
+printf '%s\n' "$line" \
+  | grep -qxE "rainfrog ${upstream}-[0-9a-f]{9} \([0-9]{4}-[0-9]{2}-[0-9]{2}\)"
+
+# Not the duplicated form.
+if printf '%s' "$line" | grep -qF "${upstream}-${upstream}"; then
+    echo "FAIL: the version is repeated inside the describe field" >&2
+    exit 1
+fi
+
+# Not vergen's placeholder, which is what an unreplaced build.rs emits with no
+# .git present.
+if printf '%s' "$line" | grep -qi 'idempotent\|VERGEN'; then
+    echo "FAIL: a vergen placeholder reached the binary" >&2
+    exit 1
+fi
+
+echo "PASS: the version, revision and date came from the source package"

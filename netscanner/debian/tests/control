@@ -1,0 +1,12 @@
+Tests: version-from-source-package
+# No extra dependencies: the assertion is about the binary's own embedded
+# strings, and needing anything here would itself be a finding.
+Depends: @
+Restrictions: allow-stderr
+
+Tests: tui-renders
+# util-linux for script(1), which allocates the pty a full-screen TUI needs.
+# netscanner opens raw sockets for scanning, but the interface enumeration this
+# test asserts on goes through netlink and needs no capability.
+Depends: @, util-linux
+Restrictions: allow-stderr

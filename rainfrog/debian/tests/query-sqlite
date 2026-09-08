@@ -1,0 +1,53 @@
+#!/bin/sh
+# The gate is a real database round-trip, not a rendered frame.
+#
+# rainfrog has no non-interactive mode, so this drives the TUI through a pty and
+# asserts on a table name created HERE, at test time. A binary that draws a
+# static layout, or that starts without ever opening the database, cannot
+# produce that name.
+#
+# The pty comes from script(1) and MUST be given a size: its default is 0x0 and
+# a TUI with no room renders nothing while still exiting 0.
+set -eu
+
+: "${AUTOPKGTEST_TMP:?}"
+
+HOME="$AUTOPKGTEST_TMP/home"
+export HOME TERM=xterm-256color
+mkdir -p "$HOME"
+cd "$AUTOPKGTEST_TMP"
+
+# Distinctive, and generated rather than fixed, so the assertion cannot be
+# satisfied by anything the binary already contains.
+table="canary_$$_$(date -u +%s)"
+db=pkghaus.db
+sqlite3 "$db" "CREATE TABLE ${table} (id INTEGER PRIMARY KEY, note TEXT);"
+test -s "$db"
+echo "--- created table $table in $db"
+
+log=render.log
+( sleep 7; printf 'q' ) | timeout 60 \
+  script -qec "stty rows 40 cols 140; rainfrog --url sqlite://${db}" "$log" >/dev/null 2>&1 || true
+test -s "$log"
+echo "--- captured $(wc -c < "$log") bytes"
+
+# Entry and exit from the alternate screen, asserted apart from the content so
+# a dead TUI and a changed layout fail differently.
+grep -qF '[?1049h' "$log"
+echo "--- alternate screen entered"
+
+plain=render.txt
+sed -e 's/\x1b\[[0-9;?]*[a-zA-Z]//g' -e 's/\r/\n/g' "$log" > "$plain"
+
+# The round-trip: rainfrog queried sqlite_schema and found what we just made.
+grep -qF "$table" "$plain"
+echo "--- rainfrog listed $table, so it opened and queried the database"
+
+# And the panes it can only draw once connected. Several, so one renamed label
+# does not carry the test alone.
+for want in Tables columns indexes constraints; do
+    grep -qF "$want" "$plain" || { echo "MISSING from render: $want" >&2; exit 1; }
+done
+echo "--- schema panes rendered"
+
+echo "PASS: connected to sqlite, read the schema and rendered it"
