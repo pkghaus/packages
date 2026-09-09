@@ -11,7 +11,7 @@ permissions:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -25,12 +25,18 @@ jobs:
         run: tests/run.sh
 
       - name: shellcheck
+        # The DEP-8 tests are shell too. find, not a glob: they carry no
+        # extension and sit one directory per package.
         run: |
+          mapfile -t dep8 < <(find . -path '*/debian/tests/*' -type f \
+            ! -name control ! -path '*/fixtures/*' | sort)
+          # A find matching nothing would silently shrink this to scripts/.
+          [ "${#dep8[@]}" -gt 0 ] || { echo "no DEP-8 scripts found" >&2; exit 1; }
           docker run --rm \
             --volume "$PWD:/repo" \
             --workdir /repo \
             koalaman/shellcheck@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
-            -x scripts/*.sh
+            -x scripts/*.sh "${dep8[@]}"
 
       - name: actionlint
         # Pinned by digest; go-yaml inside it also rejects duplicate mapping
@@ -47,7 +53,7 @@ jobs:
     # Push only. On a pull request the commits are not on master yet and the
     # range is the branch's own, which says nothing about what will land.
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7

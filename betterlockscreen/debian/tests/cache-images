@@ -95,4 +95,5 @@ if cmp -s "$cache/lock_blur.png" "$cache/lock_dim.png"; then
     exit 1
 fi
 
-echo "rendered $(ls "$cache" | wc -l) cache variants at 1024x768 from a 400x300 source"
+variants=$(find "$cache" -maxdepth 1 -type f -name '*.png' | wc -l)
+echo "rendered $variants cache variants at 1024x768 from a 400x300 source"

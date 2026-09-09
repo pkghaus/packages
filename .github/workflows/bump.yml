@@ -82,7 +82,7 @@ concurrency:
 jobs:
   plan:
     name: Find upstream releases
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -160,7 +160,7 @@ jobs:
       always()
       && needs.plan.outputs.has_work == 'true'
       && github.event_name != 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
@@ -274,7 +274,7 @@ jobs:
     # nobody would otherwise see. Nothing lands for such a package, and a red run
     # in a repository nobody watches notifies no one.
     if: always() && needs.plan.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       issues: write

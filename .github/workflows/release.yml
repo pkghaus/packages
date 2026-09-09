@@ -58,7 +58,7 @@ concurrency:
 jobs:
   plan:
     name: Decide what to release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -197,7 +197,7 @@ jobs:
       && needs.plan.result == 'success'
       && needs.plan.outputs.has_work == 'true'
       && contains(fromJSON('["success", "skipped"]'), needs.build.result)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
