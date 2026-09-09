@@ -16,7 +16,6 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-pass=0
 fail=0
 
 # What stops this suite reporting success for work it did not do. Groups report
@@ -32,7 +31,7 @@ EXPECTED_ASSERTIONS=172
 TALLY="$(mktemp)"
 trap 'rm -f "$TALLY"' EXIT
 
-ok() { printf '  ok   %s\n' "$1"; pass=$((pass + 1)); echo ok >> "$TALLY"; }
+ok() { printf '  ok   %s\n' "$1"; echo ok >> "$TALLY"; }
 no() { printf '  FAIL %s\n    %s\n' "$1" "$2"; fail=$((fail + 1)); echo no >> "$TALLY"; }
 
 eq() { # label expected actual
