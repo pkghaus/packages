@@ -9,10 +9,9 @@
 # Two columns because two jobs can stop a bump and they stop it differently.
 # verify builds and DEP-8 tests the bump; land writes the commit that releases
 # it. A package can pass all three suites and still not reach master -- a
-# signed-commit call rejected on a stale expectedHeadOid, a GitHub API outage --
-# and until 2026-09-04 nothing said so. Only the verify legs were read, so a
-# package that verified green reported success whether or not its commit
-# existed, and the dashboard's whole purpose is to make that kind of silence
+# signed-commit call rejected on a stale expectedHeadOid, a GitHub API outage.
+# Reading the verify legs alone reports success whether or not the commit
+# exists, and the dashboard's whole purpose is to make that silence
 # impossible.
 #
 # The land column is NOT a second opinion on verify. A land job runs for every
@@ -23,11 +22,10 @@
 # column 2 alone, which it must -- at that moment its package's land leg is the
 # job asking the question, and is in_progress by construction.
 #
-# The dashboard used to say only "verification did not pass for every package in
-# this run", once, for the whole run. You could still work out which package it
-# meant, because a failed package got no pull request and its row's link column
-# was empty -- the column was doing double duty as a per-package status by
-# accident. Stage 2 removed pull requests, and with them that accident, so the
+# One line per package, not one line per run. A single "verification did not
+# pass for every package in this run" was legible only while a failed package
+# got no pull request and its link column stayed empty -- a column doing double
+# duty as a per-package status by accident. Without pull requests, the
 # status has to be stated rather than inferred.
 #
 # A verify leg is named "<package> <tag> / <suite>" and a land leg "land

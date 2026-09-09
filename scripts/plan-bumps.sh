@@ -6,8 +6,7 @@
 #
 # Every enrolled package whose upstream has a tag we are not packaging. There is
 # no staleness threshold and no filtering: a different tag string is the whole
-# rule. Decided 2026-08-29, with croc's six releases in five days as the known
-# cost.
+# rule, with croc's six releases in five days as the accepted cost.
 #
 # Reads each package.conf from the tree rather than over HTTP, which is the one
 # thing this gets for free from living in the same repository as the packages.

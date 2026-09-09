@@ -121,8 +121,8 @@ bump() {
     # files are newer, dpkg-source clamps them all to one value, the build
     # passes. Cross into the next second and the epoch is 04:21:33.0, every file
     # predates it, and the build fails. Measured at about one run in sixty, and
-    # on 2026-09-03 it took one leg of vale's three while the other two, stamped
-    # one second earlier, passed (run 33714720341).
+    # it strikes one leg of a three-leg build while the other two, stamped one
+    # second earlier, pass.
     #
     # Explicitly epoch+1 rather than "now": "now" is only *probably* later than
     # an epoch truncated downwards, which is the same coin flip one notch

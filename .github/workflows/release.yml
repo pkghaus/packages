@@ -4,8 +4,8 @@ name: Release
 # builds it across every suite and architecture, tags it, and tells the archive
 # to ingest. Nobody types a git command.
 #
-# Why the tag this creates is lightweight, when every release before 2026-08-30
-# carried a detached signature: no GitHub API signs a tag. createCommitOnBranch
+# Why the tag this creates is lightweight rather than signed: no GitHub API
+# signs a tag. createCommitOnBranch
 # is the only signing mutation GraphQL exposes, and it signs commits. So the
 # choice was never "signed tag or unsigned tag" -- it was which object carries
 # the attestation. The merge commit already carries one: GitHub signs it
@@ -58,7 +58,7 @@ concurrency:
 jobs:
   plan:
     name: Decide what to release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -197,7 +197,7 @@ jobs:
       && needs.plan.result == 'success'
       && needs.plan.outputs.has_work == 'true'
       && contains(fromJSON('["success", "skipped"]'), needs.build.result)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write

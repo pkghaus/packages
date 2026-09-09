@@ -2,12 +2,10 @@
 #
 # Resolving a package's newest upstream release. Sourced, never run.
 #
-# Lifted verbatim from pkghaus/apt's watch-upstreams.sh, where these three
-# functions have run every six hours since 2026-08-17. Duplicated rather than
-# shared because a shell function cannot cross a repository boundary without a
-# submodule or an action, and neither is worth it for fifty lines. If the
-# archive's watcher and this ever disagree about what "newest" means, that is a
-# bug in one of them.
+# Duplicated rather than shared: a shell function cannot cross a repository
+# boundary without a submodule or an action, and neither is worth it for fifty
+# lines. If this and the archive's watcher ever disagree about what "newest"
+# means, that is a bug in one of them.
 
 # gh first (it carries its own auth), then a token from the environment,
 # then anonymous. Anonymous works but shares a 60-requests-per-hour pool,
@@ -26,7 +24,7 @@
 # never asked.
 #
 # gh writes its error JSON to STDOUT and the message to stderr, then exits
-# non-zero. Captured 2026-09-03 against a repo with no releases:
+# non-zero. Captured against a repo with no releases:
 #
 #   $ gh api repos/pb-/gotypist/releases/latest
 #   {"message":"Not Found",...,"status":"404"}      <- stdout
@@ -41,11 +39,11 @@
 # with that identical message. Absent is absent; nothing here needs to care.
 # Retried on a transient failure, never on a 404.
 #
-# A blip currently reads as "no release or tag found", and plan-bumps.sh then
-# skips the package: no bump, no error, nothing said, until the next scheduled
-# run six hours later. Absent, by contrast, is a real answer -- gotypist
-# publishes no releases at all -- so retrying a 404 would triple the cost of
-# every package in that state for no information.
+# A blip reads as "no release or tag found", and plan-bumps.sh then skips the
+# package: no bump, no error, nothing said until the next scheduled run six
+# hours later. Absent, by contrast, is a real answer -- gotypist publishes no
+# releases at all -- so retrying a 404 would triple the cost of every package
+# in that state for no information.
 #
 # The retry lives here rather than as curl --retry because gh is what CI
 # actually uses: the curl branch below is the fallback for a machine without
@@ -59,9 +57,9 @@ UPSTREAM_ATTEMPTS="${UPSTREAM_ATTEMPTS:-3}"
 # things this file asks of it: releases/latest returns a {"tag_name": ...}
 # body, and a project with no releases answers 404. So only the base URL and
 # the client change; the parsing and the 0/3/1 contract do not. Verified
-# 2026-09-06 against codeberg.org/ziglang/zig (404 -- zig publishes tags and no
-# releases, so it resolves through the tag-list fallback) and
-# codeberg.org/fairyglade/ly (200, tag_name v1.4.1).
+# against codeberg.org/ziglang/zig (404 -- zig publishes tags and no releases,
+# so it resolves through the tag-list fallback) and codeberg.org/fairyglade/ly
+# (200, tag_name v1.4.1).
 #
 # An unknown host is a hard failure rather than a guess at GitHub's API: a
 # wrong base URL would 404 on every path, which this file is careful to read as

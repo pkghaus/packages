@@ -38,6 +38,7 @@ cd "$WORK"
 
 if [ "${1:-}" = "--x-phase" ]; then
     daemon_pid=""
+    # shellcheck disable=SC2329  # invoked by the trap on the next line
     cleanup() { [ -n "$daemon_pid" ] && kill "$daemon_pid" 2>/dev/null; return 0; }
     trap cleanup EXIT
 

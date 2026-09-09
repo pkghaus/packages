@@ -9,14 +9,13 @@
 # built, tested, landed and published leaves nothing here: the commit, the tag,
 # the release run and the archive already carry it.
 #
-# It used to render one row per planned package whatever the outcome, including
-# "landed, releasing" for the ones that had just worked. That row was written by
-# the very run that made it obsolete -- the plan is taken before anything lands
-# -- and nothing could retract it, because a run whose plan found work can never
-# satisfy its own close condition, and the push trigger that used to re-render
-# on a landing stopped firing when landing became a GITHUB_TOKEN commit. So a
-# successful croc bump left an issue standing for hours saying croc was behind,
-# which is how a notifying surface teaches its reader to stop opening it.
+# Only unfinished work, never a row per planned package. A "landed, releasing"
+# row is written by the very run that makes it obsolete -- the plan is taken
+# before anything lands -- and nothing can retract it: a run whose plan found
+# work can never satisfy its own close condition, and a push trigger does not
+# fire for a GITHUB_TOKEN commit. A successful croc bump would leave an issue
+# standing for hours saying croc was behind, which teaches a reader to stop
+# opening the notifying surface.
 #
 # EMPTY OUTPUT IS THE ANSWER "nothing to report". The caller decides between
 # writing the issue and closing it on that and nothing else, so the judgement is
