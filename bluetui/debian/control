@@ -3,6 +3,7 @@ Section: comm
 Priority: optional
 Maintainer: pkg.haus archive <archive@pkg.haus>
 Build-Depends:
+ ca-certificates,
  debhelper-compat (= 13),
  rustup,
  libdbus-1-dev,

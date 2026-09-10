@@ -3,6 +3,7 @@ Section: web
 Priority: optional
 Maintainer: pkg.haus archive <archive@pkg.haus>
 Build-Depends:
+ ca-certificates,
  debhelper (>= 12),
  rustup,
 Rules-Requires-Root: no
