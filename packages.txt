@@ -17,6 +17,7 @@ bluetui
 croc
 d2
 difftastic
+emeraldian
 frp
 fx
 gitu

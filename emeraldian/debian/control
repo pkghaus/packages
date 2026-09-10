@@ -1,0 +1,31 @@
+Source: emeraldian
+Section: text
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ ca-certificates,
+ debhelper-compat (= 13),
+ help2man,
+ rustup,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://github.com/iamrohithrnair/emeraldian
+
+Package: emeraldian
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: terminal UI for an Obsidian vault
+ emeraldian browses a directory of Markdown notes the way Obsidian does. It
+ lists the vault, live-previews a note, resolves [[wikilinks]] into backlinks
+ and an outline, renders images inline where the terminal supports it, and
+ draws the link structure as a force-directed graph.
+ .
+ The assistant panel talks to an LLM over the network and is inert until
+ configured with an endpoint and a key; nothing else here needs a network.
+ .
+ Its HTTP client carries a compiled-in copy of the Mozilla root store rather
+ than reading /etc/ssl/certs, so the assistant's TLS trust does not follow the
+ system and a distrusted root needs a new build to take effect. That is also
+ why this package does not depend on ca-certificates.
