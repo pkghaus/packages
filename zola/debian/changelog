@@ -1,8 +1,8 @@
 zola (0.23.4-2) unstable; urgency=medium
 
   * Patch minify-html-common's build script to emit its generated Rust in a
-    stable order; it iterated a HashMap, so no two builds agreed. Applied to this
-    build's own registry copy, not vendored - see debian/README.source.
+    stable order; it iterated a HashMap, so no two builds agreed. Applied to
+    this build's own registry copy, not vendored - see debian/README.source.
   * Build reproducibly: identical bytes across build path, hostname, locale,
     timezone, umask, CPU count and file ordering.
   * Record the Rust toolchain among the build dependencies, so the build
