@@ -5,6 +5,7 @@ Maintainer: pkg.haus archive <archive@pkg.haus>
 Build-Depends:
  ca-certificates,
  debhelper-compat (= 13),
+ help2man,
  rustup,
  libdbus-1-dev,
  pkgconf,

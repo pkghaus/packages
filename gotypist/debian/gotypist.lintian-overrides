@@ -1,2 +1,7 @@
 # Pure-Go binaries are statically linked by design.
 gotypist: statically-linked-binary
+# gotypist opens /dev/tty before it parses arguments, so --help, -h and help
+# all panic rather than print anything. There is no help output to build a page
+# from: what help2man produces is the Go runtime's stack trace. Upstream ships
+# no man page either. Every other package here generates one from --help.
+gotypist: no-manual-page
