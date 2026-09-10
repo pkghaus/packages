@@ -129,6 +129,15 @@ bump() {
     # smaller. Everything then clamps to the epoch and every leg agrees.
     local stamp
     stamp="$(cd "$dir" && dpkg-parsechangelog -l debian/changelog -S Timestamp)"
+    # Checked because empty is the one bad value that arithmetic accepts.
+    # dpkg-parsechangelog exiting non-zero is caught by set -e, and a
+    # non-numeric value makes $(( )) fail under set -u, but an empty $stamp
+    # quietly evaluates to 0 and stamps every file in debian/ to 1970-01-01.
+    # That surfaces much later, in the builder's own mtime assertion, as
+    # "debian/ predate changelog" with nothing pointing back to here.
+    case "$stamp" in
+        "" | *[!0-9]*) die "no usable Timestamp in $dir/debian/changelog (got '$stamp')" ;;
+    esac
     find "$dir" -exec touch -d "@$((stamp + 1))" {} +
 
     printf '%s %s -> %s\n' "$source" "$current" "$new_version"
