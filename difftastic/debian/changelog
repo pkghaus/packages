@@ -1,9 +1,9 @@
 difftastic (0.70.0-2) unstable; urgency=medium
 
   * Compile the vendored tree-sitter grammars one at a time. build.rs built
-    them in parallel, and each grammar printing its link directive as it finished
-    made the link order, and with it the binary's layout, depend on how many CPUs
-    the builder had.
+    them in parallel, and each grammar printing its link directive as it
+    finished made the link order, and with it the binary's layout, depend on
+    how many CPUs the builder had.
   * Build reproducibly: identical bytes across build path, hostname, locale,
     timezone, umask, CPU count and file ordering.
   * Record the Rust toolchain among the build dependencies, so the build
