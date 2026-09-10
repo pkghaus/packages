@@ -1,5 +1,8 @@
 #!/usr/bin/make -f
 
+# DEB_VERSION_UPSTREAM, for the generated man page.
+include /usr/share/dpkg/pkg-info.mk
+
 # Rust's equivalent of Go's -trimpath. Without it the binary embeds the build
 # directory and a rebuild anywhere else produces different bytes.
 export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
@@ -35,3 +38,32 @@ override_dh_auto_build:
 
 override_dh_auto_install:
 	install -Dm0755 target/release/impala debian/impala/usr/bin/impala
+
+# Upstream ships no man page, so one is generated from the program's own --help
+# rather than written here. That invents nothing, and a renamed option changes
+# the page in the same build that changes the binary. The synopsis is this
+# package's own Description rather than a sentence composed for the occasion.
+#
+# --locale=C.UTF-8 because help2man's own --locale defaults to C whatever the
+# environment says, and under C it rewrites any non-ASCII in the help text
+# to "?".
+#
+# --version-string rather than letting help2man run --version: help2man takes
+# the page title from the first token of that output, so a program that greets
+# a missing display on the way out gets a page titled XSET:. Pinning it takes
+# the title from the executable and the version from the package.
+MAN_NAME := $(shell awk '/^Description: /{sub(/^Description: /,""); print; exit}' debian/control)
+
+execute_after_dh_auto_install:
+	test -n '$(MAN_NAME)'
+	test -n '$(DEB_VERSION_UPSTREAM)'
+	install -d debian/impala/usr/share/man/man1
+	help2man --no-info --section=1 --locale=C.UTF-8 --name='$(MAN_NAME)' \
+		--version-string='$(DEB_VERSION_UPSTREAM)' \
+		debian/impala/usr/bin/impala > debian/impala/usr/share/man/man1/impala.1
+	# A page is not automatically a good one: help2man writes down whatever
+	# the program said, and one that cannot run in a build container says so
+	# at length. Asserting a real option list rather than a size, because a
+	# stack trace is plenty of bytes. Observed range across this fleet is 3
+	# to 95 of these; a page built from an error message has none.
+	test "$$(grep -cE '^\.(TP|HP|IP|SS)' debian/impala/usr/share/man/man1/impala.1)" -ge 1

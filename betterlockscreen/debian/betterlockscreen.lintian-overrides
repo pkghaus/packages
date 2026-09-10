@@ -3,3 +3,9 @@ betterlockscreen: initial-upload-closes-no-bugs
 # Hooking sleep.target and suspend.target is the unit's whole purpose:
 # lock the screen before the machine suspends.
 betterlockscreen: systemd-service-file-refers-to-unusual-wantedby-target
+# betterlockscreen looks for the i3lock-color binary before it will print
+# usage, and that is a runtime dependency rather than a build one, so inside
+# the build container --help is an error message instead. A page generated
+# there documents the error, not the program. Upstream ships no man page.
+# Every other package here generates one from --help.
+betterlockscreen: no-manual-page

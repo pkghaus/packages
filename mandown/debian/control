@@ -4,6 +4,7 @@ Priority: optional
 Maintainer: pkg.haus archive <archive@pkg.haus>
 Build-Depends:
  debhelper-compat (= 13),
+ help2man,
  libconfig-dev,
  libncurses-dev,
  libxml2-dev,

@@ -7,6 +7,7 @@ Build-Depends:
  cmake,
  debhelper-compat (= 13),
  git,
+ help2man,
  pkgconf,
  rustup,
 Rules-Requires-Root: no

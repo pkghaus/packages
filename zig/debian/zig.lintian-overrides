@@ -5,9 +5,3 @@
 # can build against them; re-encoding them would edit other projects' headers
 # to silence a warning about their spelling.
 zig: national-encoding
-
-# Upstream ships no man page and generates none. `zig --help` and
-# https://ziglang.org/documentation/0.16.0/ are the documentation, and writing
-# one here would mean inventing reference material for a compiler this package
-# only redistributes.
-zig: no-manual-page

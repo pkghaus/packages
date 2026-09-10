@@ -5,6 +5,7 @@ Maintainer: pkg.haus archive <archive@pkg.haus>
 Build-Depends:
  cmake,
  debhelper-compat (= 13),
+ help2man,
  libclang-21-dev,
  liblld-21-dev,
  libpolly-21-dev,
