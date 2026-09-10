@@ -1,0 +1,119 @@
+#!/usr/bin/make -f
+
+# DEB_VERSION_UPSTREAM, used to assert the binary reports the version we
+# packaged. Without this include the variable is empty and the grep below
+# becomes `grep -qxF 'emeraldian '`, which matches nothing and fails loudly
+# rather than passing vacuously -- but the include is what makes it mean
+# anything at all.
+include /usr/share/dpkg/pkg-info.mk
+
+# Rust's equivalent of Go's -trimpath. Without it the binary embeds the build
+# directory and a rebuild anywhere else produces different bytes.
+export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
+
+# And the registry with it. Cargo unpacks dependency sources under CARGO_HOME,
+# whose default is $HOME/.cargo, and rustc embeds those paths. In-tree, so the
+# remap above covers it. Upstream ships no .cargo/config.toml, so this spelling
+# is safe here: nothing of upstream's lives at that path to be deleted by the
+# clean target, which is the trap i3status-rust and rainfrog hit.
+export CARGO_HOME := $(CURDIR)/.cargo
+
+# rustc is not a Debian package and so is absent from .buildinfo's
+# Installed-Build-Depends; pinning it here puts the version in debian/rules,
+# which ships inside the .dsc, so a rebuild resolves the same compiler.
+#
+# Upstream ships no rust-toolchain.toml, so without this the build takes
+# whatever stable is current on the day -- a record rather than a pin, which is
+# the defect lychee and viddy shipped. The floor is 1.90, which Cargo.toml
+# declares as rust-version, set by ratatui-image pulling quantette. Move this
+# with each upstream bump.
+export RUSTUP_TOOLCHAIN := 1.98.1
+
+# ca-certificates is a BUILD dependency, not a runtime one, and it is declared
+# in debian/control for a reason that only shows up outside this fleet's
+# builder image: rustup fetches the pinned toolchain over HTTPS, and with no
+# trust store it does not fail cleanly, it panics inside its downloader with
+# an empty OpenSSL error stack. The image happens to carry the cert bundle
+# while not having the package installed, so the build works there and the
+# dependency goes unrecorded in .buildinfo -- which is precisely the shape of
+# undeclared build input that a rebuilder cannot satisfy. Verified by building
+# the .dsc in a clean container with and without it, changing nothing else.
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	cargo clean
+	rm -rf $(CURDIR)/.cargo
+	rm -f debian/emeraldian.1
+
+# A workspace of four crates, so -p names the one that produces a binary. The
+# other three are libraries. --locked because upstream commits Cargo.lock and a
+# resolver free to move it would defeat the toolchain pin above.
+override_dh_auto_build:
+	cargo build --release --locked -p emeraldian
+	# Asserted non-empty before use, or the grep below tests nothing.
+	test -n '$(DEB_VERSION_UPSTREAM)'
+	# -x, not a substring match: "emeraldian 0.5.0" must be the whole line, so a
+	# binary reporting a different version cannot pass by containing this one.
+	./target/release/emeraldian --version \
+		| grep -qxF 'emeraldian $(DEB_VERSION_UPSTREAM)'
+
+# The man page is GENERATED from the program's own --help rather than written
+# here. Upstream ships none, and this fleet's standing answer to that has been
+# a lintian override (rainfrog, netscanner, zig), on the stated grounds that
+# writing one would mean inventing reference material for a program the package
+# only redistributes. Deriving it from upstream's own text invents nothing, and
+# it cannot drift: a renamed option changes the page in the same build that
+# changes the binary.
+#
+# --locale=C.UTF-8 because help2man's --locale defaults to C WHATEVER the
+# environment says, and under C it rewrites upstream's em dash to "???".
+# Verified: the binary emits e2 80 94 and help2man alone was mangling it.
+#
+# dh_installman picks debian/emeraldian.1 up by name, so nothing installs it
+# explicitly; the clean target above removes it again.
+execute_after_dh_auto_build:
+	help2man --no-info --section=1 --locale=C.UTF-8 \
+		--name='terminal UI for an Obsidian vault' \
+		./target/release/emeraldian > debian/emeraldian.1
+	# The generator is only as good as its input. Without this, a --help that
+	# stopped listing options would still produce a valid, empty reference page
+	# and the build would stay green.
+	#
+	# Normalised first: help2man emits roff, so --graph reaches the page as
+	# \fB\-\-graph\fR. Grepping the bare spelling matches nothing and fails
+	# every time, which is how the first version of this assertion behaved.
+	opts="$$(sed -e 's/\\f[BIRP]//g' -e 's/\\-/-/g' debian/emeraldian.1)"; \
+	for o in --list-vaults --graph --note --search --theme --daily --prompt; do \
+		case "$$opts" in \
+			*"$$o"*) ;; \
+			*) echo "generated man page does not document $$o" >&2; exit 1 ;; \
+		esac; \
+	done
+
+# Upstream ships CHANGELOG.md, so dh_installchangelogs installs it as the
+# package's upstream changelog -- and it arrives carrying whatever mtime the
+# file had. That single header is enough to break debrebuild, because dpkg-deb
+# clamps only mtimes NEWER than SOURCE_DATE_EPOCH:
+#
+#   this build   runs from a fresh git clone, file is newer, gets clamped
+#   a rebuild    runs from the extracted orig tarball, file carries upstream's
+#                commit date, is older, and survives unclamped
+#
+# Same bytes both times; different tar header, and debrebuild reports only
+# "size differs" with no indication of which file. gzip copies its input's
+# mtime onto the output, so pinning it before dh_compress fixes changelog.gz
+# too. Measured: without this the two data.tar.xz differ by 8 bytes.
+execute_after_dh_installchangelogs:
+	find debian/emeraldian/usr/share/doc -name 'changelog*' \
+		-exec touch --no-dereference --date='@$(SOURCE_DATE_EPOCH)' {} +
+
+# Upstream's tests are unit tests over the vault parser and need no services,
+# but they are not run here: no other Rust package in this fleet runs them at
+# build time, and function is covered by debian/tests. Keeping the fleet's
+# build steps uniform is worth more than the duplicate coverage.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 target/release/emeraldian debian/emeraldian/usr/bin/emeraldian

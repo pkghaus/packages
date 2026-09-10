@@ -1,0 +1,21 @@
+Tests: cli-contract
+# No extra dependencies. Every assertion here is about the binary's behaviour
+# with no terminal attached, which is the state autopkgtest already provides,
+# and needing anything else would itself be a finding.
+Depends: @
+Restrictions: allow-stderr
+
+Tests: render-vault
+# tmux, because emeraldian probes the terminal at startup -- a Kitty graphics
+# query, device attributes, cursor position -- and blocks until it is answered.
+# script(1)'s bare pty never answers: measured 195 bytes and a timeout. tmux
+# emulates a terminal that does, and xplr's test needs it for the same reason.
+#
+# Deliberately no ca-certificates, matching the rest of the fleet. Note what
+# that does and does not buy here: emeraldian's HTTP client compiles in the
+# Mozilla root store, so unlike rainfrog or lychee an empty system trust store
+# would NOT catch it. The value is the reverse -- if a future version switches
+# to rustls-native-certs, the assistant starts needing the system store and
+# this testbed is where that shows up.
+Depends: @, tmux
+Restrictions: allow-stderr

@@ -1,0 +1,79 @@
+#!/bin/bash
+#
+# emeraldian is a full-screen TUI, so nearly all of it is unreachable without a
+# terminal. What IS reachable is the argument handling, and it is ordered in a
+# way that makes a good witness: the vault path is validated BEFORE the terminal
+# is opened. That yields two distinct, deterministic outcomes from two inputs,
+# with no pty and no timing:
+#
+#   a path that is not a directory   "<path> is not a directory"
+#   a real vault directory           "this needs an interactive terminal"
+#
+# The second is the discriminating one. A binary that rejected every path would
+# satisfy the first; only one that actually ACCEPTED the vault gets as far as
+# looking for a terminal it cannot find.
+#
+# NOTE ON EXIT STATUS: both exit 1. Nothing here may assert on the status; the
+# message is the only thing that separates them.
+#
+# What this does NOT prove: that emeraldian renders anything, reads a note, or
+# resolves a link. That is debian/tests/render-vault, which needs tmux.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+export HOME="$WORK/home"
+mkdir -p "$HOME" "$WORK/vault"
+printf '# Alpha\n\nA note.\n' > "$WORK/vault/Alpha.md"
+
+# The packaged version, with the Debian revision and any suite qualifier
+# stripped, is what the binary must report.
+want="$(dpkg-query -W -f='${Version}' emeraldian | sed 's/-[^-]*$//')"
+reported="$(emeraldian --version 2>&1)"
+printf 'reported: %s\n' "$reported"
+case "$reported" in
+    *"$want"*) ;;
+    *) echo "emeraldian --version [$reported] does not name the packaged version [$want]" >&2
+       exit 1 ;;
+esac
+
+# --list-vaults is the one documented path that completes without a terminal.
+# Obsidian is not installed here, so the answer is the empty one, and it must
+# still be a clean exit rather than a crash.
+out="$WORK/list.out"
+if ! emeraldian --list-vaults >"$out" 2>&1; then
+    echo "--list-vaults exited non-zero with no Obsidian present" >&2
+    cat "$out" >&2
+    exit 1
+fi
+grep -qi 'no vaults are registered' "$out" || {
+    echo "--list-vaults did not report an empty vault list" >&2; cat "$out" >&2; exit 1; }
+
+# run <label> <vault-arg> -> combined output in $out
+run() {
+    rm -f "$out"
+    timeout 20 emeraldian "$2" >"$out" 2>&1 </dev/null || true
+    printf '  %-9s %s\n' "$1" "$(head -1 "$out" | cut -c1-90)"
+}
+
+run "absent" "$WORK/not-a-vault"
+grep -qi 'is not a directory' "$out" || {
+    echo "a nonexistent vault path was not rejected as such" >&2; cat "$out" >&2; exit 1; }
+
+# The discriminating case. A real vault has to get PAST validation; with no
+# terminal it then fails, and that later failure is the evidence it was taken.
+run "vault" "$WORK/vault"
+if grep -qi 'is not a directory' "$out"; then
+    echo "a real vault directory was rejected as if it did not exist" >&2
+    cat "$out" >&2
+    exit 1
+fi
+grep -qi 'needs an interactive terminal' "$out" || {
+    echo "a real vault with no terminal did not report the missing terminal" >&2
+    cat "$out" >&2
+    exit 1
+}
+
+echo "emeraldian $want reported its version, listed an empty vault set, rejected a"
+echo "nonexistent vault and accepted a real one as far as the missing terminal"

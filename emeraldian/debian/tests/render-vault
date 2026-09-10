@@ -1,0 +1,84 @@
+#!/bin/bash
+#
+# The functional half: emeraldian actually reading a vault and resolving its
+# link structure, which is the whole point of the program and the thing
+# cli-contract cannot reach.
+#
+# Driven through tmux because emeraldian queries the terminal at startup and
+# waits for the reply; a bare pty from script(1) never answers and the program
+# hangs before drawing anything.
+#
+# The vault is built here rather than shipped, so the expected numbers are
+# derived from it rather than remembered: Beta and Gamma each link to Alpha,
+# which makes Alpha's backlink count exactly 2, and a parser that failed to
+# resolve [[wikilinks]] would report 0.
+#
+# What this does NOT prove: the graph view, images, editing, or the assistant.
+# The graph is checked by hand before each release -- its force-directed layout
+# settles differently on every run, so an assertion on where a label lands
+# would be flaky, and a flaky test is worse than an absent one.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+export HOME="$WORK/home"
+mkdir -p "$HOME" "$WORK/vault"
+
+printf '# Alpha\n\nThe hub note.\n'          > "$WORK/vault/Alpha.md"
+printf '# Beta\n\nPoints at [[Alpha]].\n'    > "$WORK/vault/Beta.md"
+printf '# Gamma\n\nAlso points [[Alpha]].\n' > "$WORK/vault/Gamma.md"
+
+SESSION=emeraldian-dep8
+pane="$WORK/pane.txt"
+cleanup() { tmux kill-session -t "$SESSION" 2>/dev/null || true; }
+trap cleanup EXIT
+
+# -f /dev/null so a stray tmux.conf on the testbed cannot change key handling.
+tmux -f /dev/null new-session -d -x 200 -y 45 -s "$SESSION" \
+    "emeraldian '$WORK/vault'"
+
+# Poll rather than sleep a fixed time: a slow testbed must not fail, and a fast
+# one must not wait. 40 x 0.5s is the ceiling.
+wait_for() { # <pattern> <what>
+    for _ in $(seq 1 40); do
+        tmux capture-pane -p -t "$SESSION" > "$pane" 2>/dev/null || true
+        if grep -q "$1" "$pane"; then return 0; fi
+        sleep 0.5
+    done
+    echo "timed out waiting for $2" >&2
+    echo "--- last pane ---" >&2
+    cat "$pane" >&2
+    return 1
+}
+
+# Waits on the LAST note rather than on the pane border: the "Files" frame is
+# drawn before the listing is populated, so keying off it races the very
+# assertion below. Gamma present means the vault has been read.
+wait_for 'Gamma' 'the vault listing to populate'
+
+# Every note in the vault must be listed. This is the read half.
+for n in Alpha Beta Gamma; do
+    grep -q "$n" "$pane" || {
+        echo "the file list does not show $n" >&2; cat "$pane" >&2; exit 1; }
+done
+
+# Open Alpha through the quick switcher and confirm its body renders.
+tmux send-keys -t "$SESSION" C-o
+sleep 1
+tmux send-keys -t "$SESSION" "Alpha"
+sleep 1
+tmux send-keys -t "$SESSION" Enter
+
+wait_for 'The hub note' "Alpha's body to render"
+
+# The link half. Beta and Gamma both point at Alpha, so the count is 2, and a
+# parser that never resolved [[wikilinks]] would say 0 while everything above
+# still passed.
+#
+# "2 backlink", singular, is upstream's own wording -- it does not pluralise
+# the count. Matching the singular as a prefix means this keeps passing if a
+# later version fixes that, which asserting "2 backlinks" would not have.
+wait_for '2 backlink' "Alpha's two backlinks to resolve"
+
+echo "emeraldian listed three notes, rendered one, and resolved both backlinks"
