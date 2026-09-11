@@ -17,3 +17,9 @@ Description: OpenPGP archive keyring for apt.pkg.haus
  package keeps the trust anchor current: key rotations ship as ordinary
  package updates, signed by a key the system already trusts, so apt
  keeps working across a rotation with no manual step.
+ .
+ Two keyrings are installed. pkghaus-archive-keyring.gpg is the trust
+ anchor an apt Signed-By line names, and carries only the key that signs
+ the release files. pkghaus-source-keyring.gpg carries the key that signs
+ source packages, kept separate because apt accepts any signing key in the
+ keyring it is pointed at.

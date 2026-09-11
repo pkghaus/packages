@@ -9,17 +9,47 @@
 # build died with "gpg: Fatal: can't create directory". In-tree, and cleaned.
 export GNUPGHOME = $(CURDIR)/.gnupg
 
+PRIMARY = 79C1BBCBE46FA8B9EBACC93020F923EB99EC1720
+RELEASE_SIGNING = DD34C42E776B591FBFEB72A162B67F3EA1FA6DEC
+SOURCE_SIGNING = B04D491E3C0209F8C2F7B1F05B88ED4C9FF690E5
+
+KEYRINGS = pkghaus-archive-keyring.gpg pkghaus-source-keyring.gpg
+
+# Two keyrings from two armored files, never one file split at build time: a
+# diff of keys/ is then the whole statement of what each published keyring
+# carries, and dearmoring is a pure transcode, so all six build legs agree.
+#
+# apt trusts EVERY signing-capable key in the file its Signed-By line names, so
+# the source-signing key cannot live in the archive keyring: it sits on every
+# build leg of every package, and one shared keyring would let a leak of it
+# sign a Release that every client accepts. The absence assertions below are
+# what enforce that, so they are part of the build rather than a review habit.
 override_dh_auto_build:
 	mkdir -p -m 0700 $(GNUPGHOME)
 	gpg --dearmor < keys/pkg.haus-archive.asc > pkghaus-archive-keyring.gpg
-	# The keyring must carry the archive's primary key; fail the build if
-	# the key material ever drifts from the expected fingerprint.
+	gpg --dearmor < keys/pkg.haus-source.asc > pkghaus-source-keyring.gpg
+	# The archive keyring: primary and the release-signing subkey, and NOT
+	# the source-signing one.
 	gpg --batch --show-keys --with-colons pkghaus-archive-keyring.gpg \
-		| grep -q '^fpr:::::::::79C1BBCBE46FA8B9EBACC93020F923EB99EC1720:'
+		| grep -q '^fpr:::::::::$(PRIMARY):'
+	gpg --batch --show-keys --with-colons pkghaus-archive-keyring.gpg \
+		| grep -q '^fpr:::::::::$(RELEASE_SIGNING):'
+	! gpg --batch --show-keys --with-colons pkghaus-archive-keyring.gpg \
+		| grep -q '^fpr:::::::::$(SOURCE_SIGNING):'
+	# The source keyring: primary and the source-signing subkey, and NOT the
+	# release-signing one.
+	gpg --batch --show-keys --with-colons pkghaus-source-keyring.gpg \
+		| grep -q '^fpr:::::::::$(PRIMARY):'
+	gpg --batch --show-keys --with-colons pkghaus-source-keyring.gpg \
+		| grep -q '^fpr:::::::::$(SOURCE_SIGNING):'
+	! gpg --batch --show-keys --with-colons pkghaus-source-keyring.gpg \
+		| grep -q '^fpr:::::::::$(RELEASE_SIGNING):'
 
 override_dh_auto_install:
 	install -Dm0644 pkghaus-archive-keyring.gpg \
 		debian/pkghaus-archive-keyring/usr/share/keyrings/pkghaus-archive-keyring.gpg
+	install -Dm0644 pkghaus-source-keyring.gpg \
+		debian/pkghaus-archive-keyring/usr/share/keyrings/pkghaus-source-keyring.gpg
 
 override_dh_auto_clean:
-	rm -rf pkghaus-archive-keyring.gpg $(GNUPGHOME)
+	rm -rf $(KEYRINGS) $(GNUPGHOME)

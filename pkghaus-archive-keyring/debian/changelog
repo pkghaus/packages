@@ -1,3 +1,19 @@
+pkghaus-archive-keyring (2026.09.11) unstable; urgency=medium
+
+  * Ship the source-signing key B04D491E3C0209F8C2F7B1F05B88ED4C9FF690E5 in a
+    second keyring at /usr/share/keyrings/pkghaus-source-keyring.gpg. It signs
+    .dsc files, and its public half has to reach users before the first signed
+    source package exists.
+  * Keep it out of pkghaus-archive-keyring.gpg. apt accepts any signing key in
+    the keyring a Signed-By line names, so a source-signing key in the trust
+    anchor could sign a Release that every client accepts, and that key sits on
+    every build leg of every package. The archive keyring is unchanged.
+  * The build and the DEP-8 test each assert that a keyring carries its own
+    signing subkey and not the other one. verify-key now walks every subkey
+    instead of the first, which would have stopped checking as soon as a
+    rotation put two of them in one keyring.
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 11 Sep 2026 17:45:01 +0200
 pkghaus-archive-keyring (2026.09.02.1) unstable; urgency=medium
 
   * Build from the key in this directory instead of cloning an archived
