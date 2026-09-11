@@ -23,7 +23,11 @@
 
 set -euo pipefail
 
-FIXTURES="$(dirname "$0")/fixtures"
+# Absolute, because this script cds to $WORK below and a relative path
+# would then resolve against the wrong directory. autopkgtest invokes
+# tests with an absolute $0, so the relative form worked there and
+# failed only when the test was run by hand from the source tree.
+FIXTURES="$(cd "$(dirname "$0")" && pwd)/fixtures"
 KEYRING=/usr/share/keyrings/pkghaus-archive-keyring.gpg
 SIGNING=DD34C42E776B591FBFEB72A162B67F3EA1FA6DEC
 PRIMARY=79C1BBCBE46FA8B9EBACC93020F923EB99EC1720

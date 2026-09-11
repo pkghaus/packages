@@ -17,9 +17,14 @@
 # has to be a deliberate edit here, matching the rotation runbook.
 #
 # Capabilities are asserted separately from identity because they are what make
-# the keyring usable: the primary certifies and must not sign, the subkey signs
-# the release files. A key with the right fingerprint and no signing subkey
-# would leave apt rejecting every index.
+# the keyring usable: the primary certifies and must not sign, and TWO subkeys
+# sign -- one the release files, one the source packages. A key with the right
+# fingerprint and no signing subkey would leave apt rejecting every index.
+#
+# The two signing subkeys exist so that the source-signing key, which is held
+# by every build leg in pkghaus/packages, cannot sign a Release if it leaks.
+# Each is checked by fingerprint AND capability, because a subkey that lost its
+# signing bit is as broken as one that is absent.
 
 set -euo pipefail
 
@@ -32,6 +37,7 @@ chmod 700 "$GNUPGHOME"
 KEYRING=/usr/share/keyrings/pkghaus-archive-keyring.gpg
 PRIMARY=79C1BBCBE46FA8B9EBACC93020F923EB99EC1720
 SIGNING=DD34C42E776B591FBFEB72A162B67F3EA1FA6DEC
+SOURCE_SIGNING=B04D491E3C0209F8C2F7B1F05B88ED4C9FF690E5
 
 if [ ! -s "$KEYRING" ]; then
     echo "no keyring at $KEYRING" >&2
@@ -53,7 +59,7 @@ if ! colons="$(gpg --batch --show-keys --with-colons "$KEYRING" 2>&1)"; then
 fi
 printf '%s\n' "$colons"
 
-for fpr in "$PRIMARY" "$SIGNING"; do
+for fpr in "$PRIMARY" "$SIGNING" "$SOURCE_SIGNING"; do
     if ! printf '%s\n' "$colons" | grep -q "^fpr:::::::::$fpr:"; then
         echo "the keyring does not carry $fpr" >&2
         exit 1
@@ -69,12 +75,26 @@ case "$primary_caps" in
        exit 1 ;;
 esac
 
-signing_caps="$(printf '%s\n' "$colons" | awk -F: '/^sub:/ { print $12; exit }')"
-case "$signing_caps" in
-    *s*) ;;
-    *) echo "the subkey cannot sign (capabilities [$signing_caps])" >&2
-       exit 1 ;;
-esac
+# EVERY signing subkey, not just the first. This read `/^sub:/ { print $12;
+# exit }`, which was right while there was one subkey and silently stopped
+# checking the moment there were two: the second could have lost its signing
+# capability and this would still have passed on the first.
+#
+# The colons format puts each key's fingerprint on the fpr: line AFTER its
+# sub: line, so the two are paired by walking them in order.
+sub_caps="$(printf '%s\n' "$colons" | awk -F: '
+    /^sub:/ { caps = $12; next }
+    /^fpr:/ && caps != "" { print $10, caps; caps = "" }')"
+
+for fpr in "$SIGNING" "$SOURCE_SIGNING"; do
+    caps="$(printf '%s\n' "$sub_caps" | awk -v f="$fpr" '$1 == f { print $2; exit }')"
+    case "$caps" in
+        *s*) ;;
+        *) echo "subkey $fpr cannot sign (capabilities [$caps])" >&2
+           printf '%s\n' "$sub_caps" >&2
+           exit 1 ;;
+    esac
+done
 
 uid="$(printf '%s\n' "$colons" | awk -F: '/^uid:/ { print $10; exit }')"
 case "$uid" in
@@ -104,4 +124,5 @@ printf '%s\n' "$colons" | awk -F: '/^(pub|sub):/ && $7 != "" { print $1, $5, $7 
         echo "  $kind $keyid valid until $(date -u -d "@$expires" '+%Y-%m-%d')"
       done
 
-echo "keyring installed at $KEYRING carries $PRIMARY (certify) and $SIGNING (sign), unexpired"
+echo "keyring installed at $KEYRING carries $PRIMARY (certify), $SIGNING"
+echo "  (release signing) and $SOURCE_SIGNING (source signing), unexpired"

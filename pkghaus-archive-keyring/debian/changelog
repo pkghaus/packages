@@ -1,3 +1,17 @@
+pkghaus-archive-keyring (2026.09.11) unstable; urgency=medium
+
+  * Carry the source-signing subkey B04D491E3C0209F8C2F7B1F05B88ED4C9FF690E5.
+    It signs .dsc files from the build legs, which is where the release-signing
+    subkey must never go: a key present on every leg of every build can forge a
+    source package if it leaks, and must not also be able to sign a Release.
+    The public half ships here before any signed .dsc exists, or verification
+    fails with "No public key" for everyone who has the current keyring.
+  * verify-key checks each signing subkey by fingerprint and by capability. It
+    read only the first sub: line, so with two subkeys it would have checked
+    one and silently ignored the other.
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 11 Sep 2026 17:26:54 +0200
+
 pkghaus-archive-keyring (2026.09.02.1) unstable; urgency=medium
 
   * Build from the key in this directory instead of cloning an archived
