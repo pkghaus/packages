@@ -1,3 +1,9 @@
+ouch (0.8.3-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 13 Sep 2026 16:19:02 +0000
+
 ouch (0.8.2-2) unstable; urgency=medium
 
   * Build reproducibly: identical bytes across build path, hostname, locale,
