@@ -27,7 +27,7 @@ fail=0
 # The count goes through a file because a variable incremented in a subshell
 # never reaches this scope; traps reset in subshells, so the cleanup fires once.
 # Update the number deliberately: that edit is someone noticing it moved.
-EXPECTED_ASSERTIONS=172
+EXPECTED_ASSERTIONS=183
 TALLY="$(mktemp)"
 trap 'rm -f "$TALLY"' EXIT
 
@@ -1093,6 +1093,59 @@ echo "published check"
     fetch_index() { return 1; }
     published >/dev/null 2>&1
     eq "an unreadable index fails rather than reporting" "1" "$?"
+
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
+echo "waiting for the release tag a dispatch was supposed to create"
+(
+    # shellcheck source=scripts/await-tag.sh
+    . "$ROOT/scripts/await-tag.sh"
+    REPO=pkghaus/packages
+
+    # Counters as plain variables, so await_tag must be called directly rather
+    # than inside a substitution: a subshell would increment its own copy and
+    # every count below would read zero.
+    checks=0
+    naps=0
+    nap() { naps=$((naps + 1)); }
+
+    ATTEMPTS=60
+    tag_exists() { checks=$((checks + 1)); return 0; }
+    await_tag "croc/v11.5.3-1" >/dev/null && rc=0 || rc=$?
+    eq "a tag that is already there succeeds"      "0" "$rc"
+    eq "and it is asked for exactly once"          "1" "$checks"
+    eq "and nothing sleeps"                        "0" "$naps"
+
+    # The ordinary case: the release run needs a moment to plan, build and tag.
+    checks=0; naps=0
+    tag_exists() { checks=$((checks + 1)); [ "$checks" -ge 3 ]; }
+    await_tag "ouch/v0.8.3-1" >/dev/null && rc=0 || rc=$?
+    eq "a tag that appears late still succeeds"    "0" "$rc"
+    eq "and it stops looking once it is there"     "3" "$checks"
+    eq "and sleeps between looks, never after one that found it" "2" "$naps"
+
+    # The incident. A dispatch that resolved the wrong tree tags nothing, and
+    # release.yml exits 0 having planned nothing, so the tag is the only thing
+    # that can tell the two apart.
+    checks=0; naps=0
+    ATTEMPTS=5
+    tag_exists() { checks=$((checks + 1)); return 1; }
+    await_tag "ouch/v0.8.3-1" >/dev/null 2>&1 && rc=0 || rc=$?
+    eq "a tag that never appears fails"            "1" "$rc"
+    eq "and it looks exactly ATTEMPTS times"       "5" "$checks"
+    eq "and does not sleep after the last look"    "4" "$naps"
+
+    out="$(await_tag "ouch/v0.8.3-1" 2>&1)" || true
+    eq "and the message names the tag that is missing" "1" \
+       "$(printf '%s' "$out" | grep -c 'ouch/v0.8.3-1 never appeared')"
+
+    # A missing REPO would make every gh call fail identically to a missing
+    # tag, so the whole window would be spent before saying anything useful.
+    checks=0
+    REPO=""
+    await_tag "ouch/v0.8.3-1" >/dev/null 2>&1 && rc=0 || rc=$?
+    eq "an unset REPO fails without polling at all" "1-0" "$rc-$checks"
 
     exit $((fail > 0))
 ) || fail=$((fail + 1))

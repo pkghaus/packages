@@ -44,6 +44,16 @@ on:
         required: false
         default: false
         type: boolean
+      sha:
+        description: >-
+          Release the tree at this commit instead of whatever the branch
+          resolves to now. Honoured only when the bot is the actor, on the same
+          reasoning as skip_build: the reusable build workflow has no ref input
+          and would still check out github.sha, so a person passing one would
+          plan against one tree and build another.
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -63,6 +73,11 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       has_work: ${{ steps.plan.outputs.has_work }}
+      # What the tag will name. Read back from the checkout rather than
+      # recomputed from the same expression in two places: the tag then names
+      # the tree the plan was actually derived from, even if the ref resolved
+      # to something nobody expected.
+      sha: ${{ steps.head.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -71,7 +86,36 @@ jobs:
           # decide what is already released. A shallow clone carries none, and
           # every package would look unreleased.
           fetch-depth: 0
+          # Stated rather than inferred from fetch-depth. plan-release.sh asks
+          # git whether a tag exists and treats "no" as "not released yet", so
+          # a checkout that quietly stopped bringing tags would plan a release
+          # for every package and then 422 on a tag that was already there.
+          # Depending on how `ref` and `fetch-depth` interact for that is the
+          # kind of assumption worth spending one line to remove.
+          fetch-tags: true
           persist-credentials: false
+          # The commit the bump made, when the bump named one. Without this the
+          # run reads whatever github.sha resolved to at dispatch, and GitHub
+          # can resolve a branch to its previous tip for seconds after a commit
+          # lands through the API. That is not hypothetical: on 2026-09-13
+          # ouch's release run checked out the PARENT of its own bump commit,
+          # read the pre-bump changelog, derived a tag that already existed and
+          # planned nothing, and the archive stayed a version behind for twelve
+          # hours with every later drift check calling the package current.
+          #
+          # plan-release.sh derives the tag from this tree's changelog, so the
+          # tree is the whole input to the decision.
+          ref: >-
+            ${{ (github.event_name == 'workflow_dispatch'
+                 && github.actor == 'github-actions[bot]'
+                 && inputs.sha) || github.sha }}
+
+      - name: Report the commit being released
+        id: head
+        run: |
+          sha="$(git rev-parse HEAD)"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+          printf 'releasing the tree at %s\n' "$sha" >> "$GITHUB_STEP_SUMMARY"
 
       # Before anything is planned, let alone published. The bump cannot reach
       # pkghaus-archive-keyring/ by two conventions that both live inside the
@@ -214,11 +258,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ matrix.entry.tag }}
-          SHA: ${{ github.sha }}
+          SHA: ${{ needs.plan.outputs.sha }}
         run: |
-          # github.sha, not master's current tip: master can move while this
-          # runs, and the tag has to name the tree that was built.
-          #
+          # The commit the plan job read back out of its own checkout, never
+          # master's current tip and never a second evaluation of the ref
+          # expression: master moves while this runs, and two copies of one
+          # expression can disagree. This tags the tree the plan was actually
+          # derived from, or nothing.
+          if [ -z "$SHA" ]; then
+              echo "::error::the plan reported no commit; refusing to tag" >&2
+              exit 1
+          fi
+
           # A 422 here means the tag appeared between the plan and now -- a hand
           # pushed tag racing the merge. Loud on purpose: two release paths ran
           # for one version and somebody should see which won.

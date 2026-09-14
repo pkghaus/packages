@@ -230,6 +230,7 @@ jobs:
       # architecture, tags at itself, and tells the archive to ingest.
       - name: Commit to master, signed
         if: steps.gate.outputs.skip != 'true'
+        id: commit
         uses: pkghaus/signed-commit@v1
         with:
           workdir: .
@@ -259,13 +260,46 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PKG: ${{ matrix.entry.package }}
+          SHA: ${{ steps.commit.outputs.sha }}
         run: |
+          # The oid of the commit made one step above, rather than letting
+          # release.yml resolve master by NAME. GitHub can still resolve that
+          # name to the tip BEFORE this commit for seconds after the mutation
+          # lands, and actions/checkout then pins the run to it for good.
+          #
+          # On 2026-09-13 it did exactly that: ouch's release run checked out
+          # the parent of its own bump, read the pre-bump changelog, derived a
+          # tag that already existed, planned nothing and went green. The
+          # archive served the previous version for twelve hours.
+          #
+          # Empty means signed-commit committed nothing, which cannot happen
+          # after a bump that just rewrote two files. Failing here beats
+          # falling back to the branch name, because the branch name is the
+          # bug.
+          if [ -z "$SHA" ]; then
+              echo "::error::no commit oid for $PKG; refusing to dispatch a release that would resolve master by name" >&2
+              exit 1
+          fi
           # skip_build, because verify above already built this exact tree
           # across all three suites and both architectures. release.yml honours
           # it only for the bot; a hand dispatch always gets the gate.
           gh workflow run release.yml --repo "$REPO" \
-              -f package="$PKG" -f skip_build=true
-          printf 'dispatched release for %s\n' "$PKG" >> "$GITHUB_STEP_SUMMARY"
+              -f package="$PKG" -f skip_build=true -f sha="$SHA"
+          printf 'dispatched release for %s at %s\n' "$PKG" "$SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      # The other half. release.yml exits 0 when it plans nothing, on purpose:
+      # that is what absorbs a re-run, a changelog edit that does not move the
+      # version, and a hand-pushed tag. So a release correctly skipped and a
+      # release silently dropped are the same green run, and the tag is the
+      # only thing that tells them apart. The run that asked for the release is
+      # where that belongs, rather than the drift dashboard half a day later.
+      - name: Confirm the release was tagged
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ matrix.entry.package }}/v${{ steps.bump.outputs.version }}
+        run: scripts/await-tag.sh "$TAG"
 
   report:
     name: Drift dashboard
