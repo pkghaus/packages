@@ -27,7 +27,7 @@ fail=0
 # The count goes through a file because a variable incremented in a subshell
 # never reaches this scope; traps reset in subshells, so the cleanup fires once.
 # Update the number deliberately: that edit is someone noticing it moved.
-EXPECTED_ASSERTIONS=183
+EXPECTED_ASSERTIONS=186
 TALLY="$(mktemp)"
 trap 'rm -f "$TALLY"' EXIT
 
@@ -1146,6 +1146,51 @@ echo "waiting for the release tag a dispatch was supposed to create"
     REPO=""
     await_tag "ouch/v0.8.3-1" >/dev/null 2>&1 && rc=0 || rc=$?
     eq "an unset REPO fails without polling at all" "1-0" "$rc-$checks"
+
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
+echo "the tag the bump waits for is the tag the release creates"
+(
+    # Both scripts, because the coupling BETWEEN them is what is under test.
+    # bump.yml builds the tag it waits for out of bump-upstream.sh's version
+    # line; release.yml creates the tag plan-release.sh derives from the
+    # changelog. Nothing else compares the two, and if they ever diverge
+    # await-tag.sh waits its whole window and fails every bump in the fleet.
+    # shellcheck source=scripts/bump-upstream.sh
+    . "$ROOT/scripts/bump-upstream.sh"
+    # shellcheck source=scripts/plan-release.sh
+    . "$ROOT/scripts/plan-release.sh"
+
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    mkdir -p "$work/ouch/debian/source"
+    printf '3.0 (quilt)\n' > "$work/ouch/debian/source/format"
+    printf 'UPSTREAM=https://github.com/ouch-org/ouch.git\nVERSION=v0.8.2\n' \
+        > "$work/ouch/package.conf"
+    printf 'ouch (0.8.2-2) unstable; urgency=medium\n\n  * Previous\n\n -- pkg.haus archive <archive@pkg.haus>  Mon, 01 Jan 2001 00:00:00 +0000\n' \
+        > "$work/ouch/debian/changelog"
+
+    # Exactly what the land job does with the script's output.
+    line="$(bump "$work/ouch" v0.8.3 | grep ' -> ' | tail -1)"
+    version="${line##* }"
+    eq "the bump reports the new Debian version" "0.8.3-1" "$version"
+
+    # bump.yml composes that tag as a workflow expression, which no unit test
+    # can execute, so assert its SHAPE while $ROOT still points at the repo.
+    # Without this the two scripts can agree perfectly while the workflow
+    # between them waits for a tag nobody creates.
+    eq "bump.yml composes the tag from the package and the bumped version" "1" \
+       "$(grep -c 'TAG: ${{ matrix.entry.package }}/v${{ steps.bump.outputs.version }}' \
+          "$ROOT/.github/workflows/bump.yml")"
+
+    # Exactly what the land job then hands to await-tag.sh, against exactly
+    # what release.yml will create for the same tree.
+    ROOT="$work"
+    tag_exists() { return 1; }
+    created="$(printf 'ouch/debian/changelog\n' | plan \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["tag"])')"
+    eq "and the release creates the tag the bump waits for" "$created" "ouch/v$version"
 
     exit $((fail > 0))
 ) || fail=$((fail + 1))

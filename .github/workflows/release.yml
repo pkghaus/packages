@@ -112,10 +112,23 @@ jobs:
 
       - name: Report the commit being released
         id: head
+        env:
+          SKIP_BUILD: ${{ inputs.skip_build }}
         run: |
           sha="$(git rev-parse HEAD)"
           printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
           printf 'releasing the tree at %s\n' "$sha" >> "$GITHUB_STEP_SUMMARY"
+
+          # The reusable build workflow takes no ref, so it always checks out
+          # github.sha. If this job planned from a different commit and the
+          # build still runs, the build validates one tree while the tag names
+          # another -- silently, which is the whole bug class this file was
+          # just changed to close. The only safe pairing is sha with a skipped
+          # build, which is the bump path and the only caller that passes one.
+          if [ "$sha" != "$GITHUB_SHA" ] && [ "$SKIP_BUILD" != "true" ]; then
+              echo "::error::planned $sha but the build would validate $GITHUB_SHA; sha requires skip_build" >&2
+              exit 1
+          fi
 
       # Before anything is planned, let alone published. The bump cannot reach
       # pkghaus-archive-keyring/ by two conventions that both live inside the
