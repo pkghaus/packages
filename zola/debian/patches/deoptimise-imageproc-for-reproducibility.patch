@@ -1,0 +1,43 @@
+Description: Build components/imageproc at opt-level 1, for reproducibility
+ zola has not been reproducible since 0.23.5 brought in fast_image_resize.
+ Two builds of identical source produce binaries that differ by a few hundred
+ bytes, always register allocation inside the same handful of functions.
+ .
+ The cause is in LLVM, not in zola and not in the crate. rustc emits
+ byte-identical IR across runs; `opt` then turns that identical IR into
+ different output. Bisecting `default<O2>` with -print-pipeline-passes puts the
+ boundary at the CGSCC stage, cgscc(devirt<4>(inline,...)): stages 1..15 are
+ stable, adding stage 16 is not, and running stage 16 alone on a module proven
+ stable gives a different result every time. No individual pass inside it
+ varies on its own, which is why this reads as a walk-order problem rather than
+ a broken pass.
+ .
+ The stage enters the pipeline at -O2, so opt-level 1 is the highest setting
+ that avoids it. opt-level 2 still varies; this is the minimum that works.
+ .
+ The override targets the CALLER. components/imageproc is the only crate that
+ uses fast_image_resize, and the instability is in the crate that instantiates
+ its generics, not in the crate that defines them -- fast_image_resize's own
+ rlib is byte-identical on every build, so deoptimising it changes nothing.
+ Everything else in zola stays at opt-level 3.
+ .
+ Verified: three full builds from freshly unpacked source, byte-identical.
+ Costs about 129 KB and slower image resizing, in a static site generator.
+ .
+ This is a workaround, not a repair. Drop it when LLVM fixes the underlying
+ non-determinism, and confirm with two builds before doing so.
+Author: pkg.haus archive <archive@pkg.haus>
+Forwarded: not-needed
+Last-Update: 2026-09-15
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1,3 +1,9 @@
++# See debian/patches/deoptimise-imageproc-for-reproducibility.patch.
++# Not a performance preference: it works around non-determinism in LLVM's CGSCC
++# pass manager, which enters the pipeline at -O2.
++[profile.release.package.imageproc]
++opt-level = 1
++
+ [package]
+ name = "zola"
+ version.workspace = true
