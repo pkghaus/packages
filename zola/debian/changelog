@@ -1,3 +1,14 @@
+zola (0.23.6-2) unstable; urgency=medium
+
+  * Build components/imageproc at opt-level 1, which restores reproducibility.
+    zola has not rebuilt to its own record since 0.23.5 brought in
+    fast_image_resize. The cause is non-determinism in LLVM's CGSCC pass
+    manager, which enters the pipeline at -O2, so 1 is the highest level that
+    avoids it. The override targets the crate that instantiates the generics,
+    not the one that defines them. See debian/patches/ for the evidence.
+
+ -- pkg.haus archive <archive@pkg.haus>  Tue, 15 Sep 2026 17:20:36 +0200
+
 zola (0.23.6-1) unstable; urgency=medium
 
   * New upstream release
