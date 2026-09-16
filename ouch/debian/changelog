@@ -1,3 +1,13 @@
+ouch (0.8.3-2) unstable; urgency=medium
+
+  * Rebuild against action-debian-build v1.10.0, which restores
+    reproducibility. Upstream's CHANGELOG, installed as changelog.gz, kept the
+    checkout's mtime here while a rebuild from the .dsc took upstream's commit
+    date from the orig tarball. dpkg-deb clamps only the newer of the two, so
+    the two builds disagreed by one tar header.
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 16 Sep 2026 14:11:14 +0200
+
 ouch (0.8.3-1) unstable; urgency=medium
 
   * New upstream release

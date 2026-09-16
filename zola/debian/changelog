@@ -1,3 +1,14 @@
+zola (0.23.6-3) unstable; urgency=medium
+
+  * Rebuild against action-debian-build v1.10.0, which restores
+    reproducibility. Upstream's CHANGELOG, installed as changelog.gz, kept the
+    checkout's mtime here while a rebuild from the .dsc took upstream's commit
+    date from the orig tarball. dpkg-deb clamps only the newer of the two, so
+    the two builds disagreed by one tar header. Separate from the LLVM
+    non-determinism 0.23.6-2 fixed; both had to go before zola rebuilt.
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 16 Sep 2026 14:11:14 +0200
+
 zola (0.23.6-2) unstable; urgency=medium
 
   * Build components/imageproc at opt-level 1, which restores reproducibility.
