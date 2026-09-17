@@ -27,7 +27,7 @@ fail=0
 # The count goes through a file because a variable incremented in a subshell
 # never reaches this scope; traps reset in subshells, so the cleanup fires once.
 # Update the number deliberately: that edit is someone noticing it moved.
-EXPECTED_ASSERTIONS=186
+EXPECTED_ASSERTIONS=199
 TALLY="$(mktemp)"
 trap 'rm -f "$TALLY"' EXIT
 
@@ -1195,8 +1195,61 @@ echo "the tag the bump waits for is the tag the release creates"
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 
+echo "release gate skip"
+(
+    # shellcheck source=scripts/prebuilt.sh
+    . "$ROOT/scripts/prebuilt.sh"
+
+    # The gate may be skipped only when the pull request this merge came from
+    # built this exact tree, green, with the builder v1 resolves to now. Every
+    # other answer is "build", because skipping wrongly tags a tree nobody
+    # compiled while building wrongly costs 824 seconds.
+    eq "the whole set holding is the only true" \
+       "true" "$(prebuilt_verdict TREE TREE success BLD BLD 'croc
+d2' 'croc')"
+
+    eq "a different tree builds" \
+       "false" "$(prebuilt_verdict TREE OTHER success BLD BLD 'croc' 'croc')"
+
+    # Merging does not require green checks here -- the ruleset carries
+    # required_signatures and deletion, not required status checks -- so this
+    # is the only thing that knows a red pull request was merged.
+    eq "a red pull-request run builds" \
+       "false" "$(prebuilt_verdict TREE TREE failure BLD BLD 'croc' 'croc')"
+    eq "a cancelled pull-request run builds" \
+       "false" "$(prebuilt_verdict TREE TREE cancelled BLD BLD 'croc' 'croc')"
+
+    # build.yml is called as @v1, a floating tag. Equal package trees say
+    # nothing about which builder ran.
+    eq "a builder that moved since the pull request builds" \
+       "false" "$(prebuilt_verdict TREE TREE success OLDBLD NEWBLD 'croc' 'croc')"
+
+    eq "a planned package the run did not build builds" \
+       "false" "$(prebuilt_verdict TREE TREE success BLD BLD 'croc' 'zola')"
+    eq "a planned package matches only whole, not as a prefix" \
+       "false" "$(prebuilt_verdict TREE TREE success BLD BLD 'croc-extra' 'croc')"
+
+    # Each empty field is a lookup that did not answer: no pull request, an
+    # API shape that changed, a run that could not be found.
+    eq "an unknown merge tree builds" \
+       "false" "$(prebuilt_verdict '' TREE success BLD BLD 'croc' 'croc')"
+    eq "an unknown pull-request tree builds" \
+       "false" "$(prebuilt_verdict TREE '' success BLD BLD 'croc' 'croc')"
+    eq "an unknown builder builds" \
+       "false" "$(prebuilt_verdict TREE TREE success '' BLD 'croc' 'croc')"
+    eq "an unresolvable v1 builds" \
+       "false" "$(prebuilt_verdict TREE TREE success BLD '' 'croc' 'croc')"
+    eq "an empty release set builds" \
+       "false" "$(prebuilt_verdict TREE TREE success BLD BLD 'croc' '')"
+    eq "no arguments at all builds" \
+       "false" "$(prebuilt_verdict)"
+
+    exit $((fail > 0))
+) || fail=$((fail + 1))
+
 echo
 ran="$(wc -l < "$TALLY")"
+
 if [ "$ran" -ne "$EXPECTED_ASSERTIONS" ]; then
     echo "FAIL: $ran assertions ran, expected $EXPECTED_ASSERTIONS."
     echo "      An assertion was skipped, not failed -- look for a group that"
