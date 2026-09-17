@@ -20,16 +20,13 @@
 set -euo pipefail
 shopt -s inherit_errexit
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib.sh
+. "$HERE/lib.sh"
+
 ROOT="${ROOT:-.}"
 
-die() { printf '%s\n' "$*" >&2; exit 1; }
-json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
-
-# The same first-line parse bump-upstream.sh writes, narrowed to the version.
-changelog_version() {
-    sed -n '1s/^[^ ]* (\([^)]*\)).*/\1/p' "$ROOT/$1/debian/changelog"
-}
-
+plan_die() { printf '%s\n' "$*" >&2; exit 1; }
 # Overridden in the tests. Local refs, which is only trustworthy because the
 # workflow checks out with fetch-depth 0; a shallow clone carries no tags and
 # every package would look unreleased.
@@ -51,8 +48,8 @@ plan() {
         case "$seen" in *" $pkg "*) continue ;; esac
         seen="$seen$pkg "
 
-        version="$(changelog_version "$pkg")"
-        [ -n "$version" ] || die "cannot parse $pkg/debian/changelog"
+        version="$(changelog_version "$ROOT/$pkg")"
+        [ -n "$version" ] || plan_die "cannot parse $pkg/debian/changelog"
 
         tag="$pkg/v$version"
 
@@ -67,7 +64,7 @@ plan() {
         # Loud rather than skipped: a package that silently stops releasing
         # looks exactly like a package with nothing to release.
         git check-ref-format "refs/tags/$tag" 2>/dev/null \
-            || die "$pkg $version cannot be a tag name"
+            || plan_die "$pkg $version cannot be a tag name"
         if tag_exists "$tag"; then
             printf 'SKIP %s: %s already exists\n' "$pkg" "$tag" >&2
             continue

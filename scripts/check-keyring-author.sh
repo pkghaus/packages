@@ -47,8 +47,21 @@ case "$from" in
         ;;
 esac
 
+# A command that fails inside a process substitution does not trip set -e, and
+# inherit_errexit does not reach it either. Walking the range straight into the
+# loop therefore meant an unresolvable range read as zero commits, bad stayed 0,
+# and this printed ok having examined nothing -- the guard failing open, which
+# is the one thing the header above promises it does not do. Capturing first
+# puts the walk back under set -e.
+commits="$(git_ rev-list "$from..$to")" || {
+    printf 'FATAL: cannot walk %s..%s; refusing to report on an unread range\n' \
+        "$from" "$to" >&2
+    exit 1
+}
+
 bad=0
 while read -r commit; do
+    # An empty range yields one empty line through the herestring below.
     [ -n "$commit" ] || continue
     # --format= empties the header so only the file list remains.
     files="$(git_ show --name-only --format= "$commit")"
@@ -65,7 +78,7 @@ while read -r commit; do
             bad=$((bad + 1))
             ;;
     esac
-done < <(git_ rev-list "$from..$to")
+done <<< "$commits"
 
 if [ "$bad" -gt 0 ]; then
     printf 'REFUSED: %d bot-authored commit(s) touched %s\n' "$bad" "$GUARDED" >&2

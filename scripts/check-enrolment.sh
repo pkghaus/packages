@@ -27,7 +27,7 @@ enrolled=0
 # Space-delimited membership is safe because a Debian source name cannot
 # contain whitespace.
 names=""
-while read -r pkg; do
+while read -r pkg || [ -n "$pkg" ]; do
     case "$pkg" in ''|\#*) continue ;; esac
     pkg="${pkg%%[[:space:]]*}"
     enrolled=$((enrolled + 1))
