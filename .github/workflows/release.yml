@@ -78,6 +78,16 @@ jobs:
       # the tree the plan was actually derived from, even if the ref resolved
       # to something nobody expected.
       sha: ${{ steps.head.outputs.sha }}
+      # Whether the gate below can be skipped because the pull request this
+      # merge came from already built this exact tree with this exact builder.
+      # Defaults to the empty string, which is not 'true', so every path that
+      # does not reach the step builds.
+      prebuilt: ${{ steps.prebuilt.outputs.prebuilt }}
+    permissions:
+      contents: read
+      # To read the pull request's own build run and what builder it resolved.
+      actions: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -199,6 +209,33 @@ jobs:
           scripts/plan-output.sh "$matrix" >> "$GITHUB_OUTPUT"
           printf 'releasing: %s\n' "$matrix" >> "$GITHUB_STEP_SUMMARY"
 
+      # Only on a push, and only to answer "did the pull request this came from
+      # already build exactly this?". The other two events are settled: a bot
+      # dispatch already skips through skip_build, and a hand dispatch must
+      # always gate because nothing else may have built.
+      #
+      # `|| true` on the call, deliberately: a release must not fail because an
+      # optimisation could not make up its mind. The script already answers
+      # false for every unknown; this covers it exiting non-zero as well.
+      - name: Was this tree already built by its pull request?
+        id: prebuilt
+        if: github.event_name == 'push' && steps.plan.outputs.has_work == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          MATRIX: ${{ steps.plan.outputs.matrix }}
+        run: |
+          verdict="$(scripts/prebuilt.sh "$SHA" "$MATRIX" || true)"
+          [ "$verdict" = "true" ] || verdict=false
+          printf 'prebuilt=%s\n' "$verdict" >> "$GITHUB_OUTPUT"
+          if [ "$verdict" = "true" ]; then
+              printf 'gate skipped: this tree was already built green by its pull request.\n' \
+                  >> "$GITHUB_STEP_SUMMARY"
+          else
+              printf 'gate runs: no proof this exact tree was already built.\n' \
+                  >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   build:
     name: ${{ matrix.entry.package }} ${{ matrix.entry.version }}
     needs: plan
@@ -216,11 +253,18 @@ jobs:
     # suffer for it: the ingest builds every package from source itself, so an
     # unbuildable tag fails there, publishes nothing, and shows up in the
     # dashboard's "packaged but not published" table.
+    #
+    # And the merge path, on the same reasoning and a stricter test: the pull
+    # request this came from built this exact tree, green, with the builder v1
+    # resolves to now. Orthogonal to the dispatch clause above; neither reads
+    # the other's event.
     if: >-
       needs.plan.outputs.has_work == 'true'
       && !(github.event_name == 'workflow_dispatch'
            && inputs.skip_build
            && github.actor == 'github-actions[bot]')
+      && !(github.event_name == 'push'
+           && needs.plan.outputs.prebuilt == 'true')
     strategy:
       fail-fast: false
       matrix:
