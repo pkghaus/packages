@@ -20,16 +20,14 @@
 set -euo pipefail
 shopt -s inherit_errexit
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib.sh
+. "$HERE/lib.sh"
+
 PACKAGES_FILE="${PACKAGES_FILE:-packages.txt}"
 ROOT="${ROOT:-.}"
 ARCHIVE_BASE="${ARCHIVE_BASE:-https://apt.pkg.haus}"
 ARCHES="${ARCHES:-amd64 arm64}"
-
-json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
-
-changelog_version() {
-    sed -n '1s/^[^ ]* (\([^)]*\)).*/\1/p' "$ROOT/$1/debian/changelog"
-}
 
 # Overridden in the tests, which have no network. Anything that prints a
 # Packages file works.
@@ -58,11 +56,11 @@ published() {
         printf '%s\n' "$idx" > "$TMP/index.$arch"
     done
 
-    while read -r pkg; do
+    while read -r pkg || [ -n "$pkg" ]; do
         case "$pkg" in ''|\#*) continue ;; esac
         pkg="${pkg%%[[:space:]]*}"
         [ -f "$ROOT/$pkg/debian/changelog" ] || continue
-        packaged="$(changelog_version "$pkg")"
+        packaged="$(changelog_version "$ROOT/$pkg")"
         [ -n "$packaged" ] || continue
 
         for arch in $ARCHES; do

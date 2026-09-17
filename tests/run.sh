@@ -27,7 +27,7 @@ fail=0
 # The count goes through a file because a variable incremented in a subshell
 # never reaches this scope; traps reset in subshells, so the cleanup fires once.
 # Update the number deliberately: that edit is someone noticing it moved.
-EXPECTED_ASSERTIONS=199
+EXPECTED_ASSERTIONS=201
 TALLY="$(mktemp)"
 trap 'rm -f "$TALLY"' EXIT
 
@@ -982,6 +982,14 @@ echo "keyring guard"
     eq "a clean tip under a sentinel before passes" "0" \
        "$(run 0000000000000000000000000000000000000000)"
 
+    # The walk used to sit in a process substitution, where a failing rev-list
+    # cannot trip set -e: the loop read nothing, bad stayed 0, and an
+    # unresolvable range printed ok having examined no commits. A force-push
+    # leaving github.event.before unfetchable is the reachable path. Caught by
+    # putting the rev-list back in `done < <(...)`.
+    eq "an unwalkable range fails rather than passing" "1" \
+       "$(run deadbeefdeadbeefdeadbeefdeadbeefdeadbeef)"
+
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 
@@ -1062,7 +1070,11 @@ echo "published check"
 (
     . "$ROOT/scripts/check-published.sh"
     work="$(mktemp -d)"
-    trap 'rm -rf "$work"' EXIT
+    # $TMP comes with the sourced script, which sets its own EXIT trap at file
+    # scope -- deliberately, since scratch state made inside a command
+    # substitution is undone when it returns. Installing a trap here replaces
+    # that one, so $TMP has to be named or it leaks on every run.
+    trap 'rm -rf "$work" "$TMP"' EXIT
     mk() { mkdir -p "$work/$1/debian"
            printf '%s (%s) unstable; urgency=medium\n' "$1" "$2" > "$work/$1/debian/changelog"; }
     mk ouch 0.8.3-1
@@ -1170,6 +1182,13 @@ echo "the tag the bump waits for is the tag the release creates"
         > "$work/ouch/package.conf"
     printf 'ouch (0.8.2-2) unstable; urgency=medium\n\n  * Previous\n\n -- pkg.haus archive <archive@pkg.haus>  Mon, 01 Jan 2001 00:00:00 +0000\n' \
         > "$work/ouch/debian/changelog"
+
+    # Both scripts spelled their bail-out `die` until the second source here
+    # silently shadowed the first, turning bump-upstream.sh's documented exit 4
+    # into plan-release.sh's exit 1 for all eleven of its refusal paths. Nested
+    # so the exit ends that shell rather than this group.
+    eq "a refusal keeps exit 4 with both scripts sourced" "4" \
+       "$( (bump /nope/nothing v1 >/dev/null 2>&1); echo $? )"
 
     # Exactly what the land job does with the script's output.
     line="$(bump "$work/ouch" v0.8.3 | grep ' -> ' | tail -1)"

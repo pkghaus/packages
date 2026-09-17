@@ -15,33 +15,25 @@ set -euo pipefail
 shopt -s inherit_errexit
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib.sh
+. "$HERE/lib.sh"
 # shellcheck source=scripts/upstream.sh
 . "$HERE/upstream.sh"
 
 PACKAGES_FILE="${PACKAGES_FILE:-packages.txt}"
 ROOT="${ROOT:-.}"
 
-json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
-
-# A native package is its own upstream: its version tracks the signing key, not
-# a release feed, so a tag lookup says nothing about it.
-is_native() {
-    case "$(cat "$ROOT/$1/debian/source/format" 2>/dev/null)" in
-        *native*) return 0 ;; *) return 1 ;;
-    esac
-}
-
 # The loop is a function so tests can source this file and override latest_tag.
 # Everything above is definitions, everything below runs.
 plan() {
     local rows="" pkg conf ours upstream_url host slug newest
-    while read -r pkg; do
+    while read -r pkg || [ -n "$pkg" ]; do
         case "$pkg" in ''|\#*) continue ;; esac
         pkg="${pkg%%[[:space:]]*}"
 
         conf="$ROOT/$pkg/package.conf"
         [ -f "$conf" ] || { printf 'SKIP %s: no package.conf\n' "$pkg" >&2; continue; }
-        is_native "$pkg" && continue
+        is_native "$ROOT/$pkg" && continue
 
         ours="$(sed -n 's/^VERSION=//p' "$conf" | head -n1)"
         upstream_url="$(sed -n 's/^UPSTREAM=//p' "$conf" | head -n1)"

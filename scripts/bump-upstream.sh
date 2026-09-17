@@ -17,7 +17,11 @@ set -euo pipefail
 # called as x="$(f)" keeps running after a failure instead of aborting.
 shopt -s inherit_errexit
 
-die() { printf 'bump: %s\n' "$1" >&2; exit 4; }
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib.sh
+. "$HERE/lib.sh"
+
+bump_die() { printf 'bump: %s\n' "$1" >&2; exit 4; }
 
 # The upstream tag is not the Debian upstream version. Measured across the
 # fleet: lychee-v0.24.2 -> 0.24.2, v1.0.5.2 -> 1.0.5.2, while 39.2.0 and
@@ -31,13 +35,6 @@ upstream_version() {
 # A native package is its own upstream: archive-keyring's version tracks the
 # signing key, not a release feed. Bumping it from a tag lookup is meaningless,
 # so it is refused rather than skipped silently.
-is_native() {
-    case "$(cat "$1/debian/source/format" 2>/dev/null)" in
-        *native*) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
 # Source name and full version from the changelog's first line, which is the
 # authority for both -- package.conf carries the upstream tag, not the Debian
 # version.
@@ -45,10 +42,10 @@ changelog_head() { sed -n '1s/^\([^ ]*\) (\([^)]*\)).*/\1 \2/p' "$1/debian/chang
 
 bump() {
     local dir="$1" tag="$2"
-    [ -d "$dir" ] || die "no such directory: $dir"
-    [ -f "$dir/package.conf" ] || die "no package.conf in $dir"
-    [ -f "$dir/debian/changelog" ] || die "no debian/changelog in $dir"
-    is_native "$dir" && die "native package: its version is not an upstream tag"
+    [ -d "$dir" ] || bump_die "no such directory: $dir"
+    [ -f "$dir/package.conf" ] || bump_die "no package.conf in $dir"
+    [ -f "$dir/debian/changelog" ] || bump_die "no debian/changelog in $dir"
+    is_native "$dir" && bump_die "native package: its version is not an upstream tag"
 
     # The tag is upstream's string, fetched from their API, and it reaches sed's
     # replacement below where '&' means "the whole match" -- a tag containing
@@ -56,25 +53,25 @@ bump() {
     # the fleet fits this charset; anything outside it is refused rather than
     # escaped, because a tag needing escaping is a packaging decision.
     case "$tag" in
-        ''|*[!A-Za-z0-9._+-]*) die "tag [$tag] is not a plain version tag" ;;
+        ''|*[!A-Za-z0-9._+-]*) bump_die "tag [$tag] is not a plain version tag" ;;
     esac
 
     local new_upstream head source current current_upstream
     new_upstream="$(upstream_version "$tag")"
-    [ -n "$new_upstream" ] || die "tag [$tag] yields no version"
+    [ -n "$new_upstream" ] || bump_die "tag [$tag] yields no version"
 
     head="$(changelog_head "$dir")"
     source="${head%% *}"
     current="${head##* }"
     current_upstream="${current%-*}"
-    [ -n "$source" ] && [ -n "$current" ] || die "cannot parse debian/changelog"
+    [ -n "$source" ] && [ -n "$current" ] || bump_die "cannot parse debian/changelog"
 
     # An epoch has no counterpart in an upstream tag, so a new version derived
     # from one would silently drop it and read as a downgrade to every apt
     # client. The version comparison below would refuse it anyway; refusing here
     # says why. No fleet package carries one today.
     case "$current" in
-        *:*) die "$source carries an epoch ($current); bump it by hand" ;;
+        *:*) bump_die "$source carries an epoch ($current); bump it by hand" ;;
     esac
 
     if [ "$new_upstream" = "$current_upstream" ]; then
@@ -89,14 +86,14 @@ bump() {
     # rather than guessed at.
     if command -v dpkg >/dev/null 2>&1; then
         dpkg --compare-versions "$new_upstream" gt "$current_upstream" \
-            || die "refusing to move $source from $current_upstream to $new_upstream"
+            || bump_die "refusing to move $source from $current_upstream to $new_upstream"
     fi
 
     # A new upstream version restarts the Debian revision.
     local new_version="$new_upstream-1"
 
     sed -i "s|^VERSION=.*|VERSION=$tag|" "$dir/package.conf"
-    grep -q "^VERSION=$tag$" "$dir/package.conf" || die "package.conf VERSION did not take"
+    grep -q "^VERSION=$tag$" "$dir/package.conf" || bump_die "package.conf VERSION did not take"
 
     # Written as a group rather than through a command substitution: $(...)
     # strips trailing newlines, which silently welded the new trailer onto the
@@ -136,7 +133,7 @@ bump() {
     # That surfaces much later, in the builder's own mtime assertion, as
     # "debian/ predate changelog" with nothing pointing back to here.
     case "$stamp" in
-        "" | *[!0-9]*) die "no usable Timestamp in $dir/debian/changelog (got '$stamp')" ;;
+        "" | *[!0-9]*) bump_die "no usable Timestamp in $dir/debian/changelog (got '$stamp')" ;;
     esac
     find "$dir" -exec touch -d "@$((stamp + 1))" {} +
 
