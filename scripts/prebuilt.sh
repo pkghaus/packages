@@ -21,8 +21,7 @@
 # wrongly costs 824 seconds. The asymmetry decides every branch below.
 
 set -euo pipefail
-
-die() { echo "prebuilt: $*" >&2; exit 1; }
+shopt -s inherit_errexit
 
 # The decision, separated from the fetching so it can be tested without a
 # network. Every argument is a fact gathered above it; this function does no
@@ -102,9 +101,12 @@ main() {
         --jq '.workflow_runs[0].id // empty' 2>/dev/null || true)"
     [ -n "$run" ] || { echo false; return 0; }
 
-    conclusion="$(gh api "repos/$repo/actions/runs/$run" --jq '.conclusion // empty' 2>/dev/null || true)"
-    built_ref="$(gh api "repos/$repo/actions/runs/$run" \
-        --jq '[.referenced_workflows[]? | select(.path | startswith("'"$builder_repo"'/.github/workflows/build.yml")) | .sha] | first // empty' \
+    # One fetch, two readings. Two calls could see two states of the same run,
+    # and both answers have to describe the same one.
+    run_json="$(gh api "repos/$repo/actions/runs/$run" 2>/dev/null || true)"
+    conclusion="$(printf '%s' "$run_json" | jq -r '.conclusion // empty' 2>/dev/null || true)"
+    built_ref="$(printf '%s' "$run_json" \
+        | jq -r '[.referenced_workflows[]? | select(.path | startswith("'"$builder_repo"'/.github/workflows/build.yml")) | .sha] | first // empty' \
         2>/dev/null || true)"
 
     # What a run started now would resolve v1 to. The tag object, not the
