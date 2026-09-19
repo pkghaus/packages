@@ -1,3 +1,9 @@
+difftastic (0.71.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Sat, 19 Sep 2026 04:40:05 +0000
+
 difftastic (0.70.0-2) unstable; urgency=medium
 
   * Compile the vendored tree-sitter grammars one at a time. build.rs built
