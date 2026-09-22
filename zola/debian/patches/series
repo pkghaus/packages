@@ -1,1 +1,2 @@
 deoptimise-imageproc-for-reproducibility.patch
+deoptimise-exr-for-reproducibility.patch

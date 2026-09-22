@@ -1,0 +1,58 @@
+Description: Build exr at opt-level 1, for reproducibility on arm64
+ zola reproduces on amd64 and fails about half the time on arm64. The failure
+ is the same LLVM non-determinism that
+ deoptimise-imageproc-for-reproducibility.patch works around, surfacing in a
+ different crate, so that patch does not cover it: it is architecture
+ independent and amd64 was clean under it nine times out of nine while arm64
+ was not.
+ .
+ The function was identified by building one record three times with symbols
+ kept and diffing the results against each other. Two builds agreed and the
+ third differed by twenty-four bytes: twenty in .note.gnu.build-id, which is a
+ SHA1 over the content and therefore a consequence, and four in .text, all
+ inside
+ exr::compression::dwa::lossy_dct::decode_lossy_channels.
+ Those four bytes are one byte each within four fixed-width AArch64
+ instructions, a swap of x10 and x11 across two add/stp pairs with identical
+ semantics. Register allocation, as on amd64.
+ .
+ That byte signature is the same one the published binary shows against a
+ rebuild of itself, twenty in the build-id and four in .text, which is what
+ ties the diagnostic configuration's answer to the shipped one.
+ .
+ The override targets exr directly, and this is the opposite of the imageproc
+ case. There the unstable code was a monomorphization of fast_image_resize's
+ generics instantiated in the caller, so deoptimising the defining crate would
+ have changed nothing. Here the mangled name carries exr's own crate hash with
+ no generic parameters from elsewhere: it is exr's own code in exr's own
+ codegen unit, and exr is where the override belongs.
+ .
+ exr arrives through image's default features and decodes OpenEXR. A static
+ site generator has no use for it, so disabling that feature would delete the
+ code rather than deoptimise it. That is deliberately not done here: zola's
+ manifest sets default-features = true on image, and dropping a format from a
+ packaged binary is a divergence from what upstream ships, which is a larger
+ decision than a reproducibility workaround.
+ .
+ This is a workaround, not a repair. The LLVM bug is untouched. Drop it when
+ LLVM fixes the underlying non-determinism, and confirm with several builds
+ before doing so -- on a leg that flaps about half the time, two agreeing
+ builds happen a quarter of the time by luck.
+Author: pkg.haus archive <archive@pkg.haus>
+Forwarded: not-needed
+Last-Update: 2026-09-22
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -4,6 +4,12 @@
+ [profile.release.package.imageproc]
+ opt-level = 1
+ 
++# See debian/patches/deoptimise-exr-for-reproducibility.patch. Same LLVM
++# non-determinism, a different crate: exr's own DWA decoder, reached only
++# through image's default features.
++[profile.release.package.exr]
++opt-level = 1
++
+ [package]
+ name = "zola"
+ version.workspace = true

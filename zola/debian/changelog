@@ -1,3 +1,12 @@
+zola (0.23.6-4) unstable; urgency=medium
+
+  * Build exr at opt-level 1, which restores reproducibility on arm64. The
+    same LLVM non-determinism 0.23.6-2 worked around in components/imageproc,
+    in a crate that patch does not cover: exr's own DWA decoder, reached
+    through image's default features. amd64 was unaffected.
+
+ -- pkg.haus archive <archive@pkg.haus>  Tue, 22 Sep 2026 02:54:43 +0200
+
 zola (0.23.6-3) unstable; urgency=medium
 
   * Rebuild against action-debian-build v1.10.0, which restores

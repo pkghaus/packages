@@ -64,6 +64,25 @@ override_dh_auto_configure:
 	        exit 1; }; \
 	done
 
+# A profile override for a package that is not in the dependency graph is NOT
+# an error. cargo prints "profile package spec `X` in profile `release` did
+# not match any packages" and builds anyway, so a crate that upstream drops or
+# renames turns both reproducibility workarounds into no-ops and the only
+# symptom is that zola quietly stops reproducing again.
+#
+# exr is the fragile one: it is a transitive dependency reached through image's
+# default features, not something this package names. imageproc is a workspace
+# member of zola itself and cannot go missing without the build failing first.
+execute_after_dh_auto_configure:
+	set -e; \
+	test -f Cargo.lock || { echo "FATAL: no Cargo.lock to check the profile overrides against" >&2; exit 1; }; \
+	grep -q '^name = "exr"$$' Cargo.lock || { \
+	    echo "FATAL: exr is no longer in the dependency graph, so" >&2; \
+	    echo "       [profile.release.package.exr] is silently doing nothing and" >&2; \
+	    echo "       debian/patches/deoptimise-exr-for-reproducibility.patch has" >&2; \
+	    echo "       stopped working. Re-check what upstream pulls in." >&2; \
+	    exit 1; }
+
 override_dh_auto_clean:
 	cargo clean
 	rm -rf $(CURDIR)/.cargo
