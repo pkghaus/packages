@@ -1,3 +1,9 @@
+kudu (0.4.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 23 Sep 2026 21:34:18 +0000
+
 kudu (0.3.0-1) unstable; urgency=medium
 
   * Initial release.
