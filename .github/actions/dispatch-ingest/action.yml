@@ -1,0 +1,79 @@
+name: Dispatch the archive ingest
+description: >-
+  Tell pkghaus/apt to ingest, with a token minted from the org's
+  pkghaus-dispatch GitHub App.
+
+# Shared by release.yml (the merge path) and build.yml (a hand-pushed tag), so
+# the two ways a package reaches the archive send the same request.
+#
+# The token is scoped to pkghaus/apt with Actions: write and nothing else,
+# expires within the hour and is revoked when the job ends. Actions: write is
+# the whole of it because this fires a workflow_dispatch; the
+# repository_dispatch it replaced is filed under Contents: write, which can
+# push to apt.
+#
+# No silent skip. A missing App ID means a package is tagged and the archive
+# never hears about it, which looks identical to a successful release. If the
+# mint step fails with "at least one repository ... is not accessible", apt was
+# deleted and recreated and has to be re-selected on the App's installation.
+
+inputs:
+  app-id:
+    description: The pkghaus-dispatch App's ID.
+    required: true
+  private-key:
+    description: The pkghaus-dispatch App's private key.
+    required: true
+  tag:
+    description: The tag the archive should hear about, for the run title.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Check the App is configured
+      shell: bash
+      env:
+        APP_ID: ${{ inputs.app-id }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        if [ -z "${APP_ID}" ]; then
+          echo "::error::PKGHAUS_DISPATCH_APP_ID is not visible to this repo; $TAG is tagged but unpublished" >&2
+          exit 1
+        fi
+
+    # app-id, not the client-id the action's README now prefers: v3.2 accepts
+    # both, but actionlint 1.7.12 (the newest release) still describes v3.0,
+    # where app-id was required and client-id did not exist.
+    - name: Mint a token for the archive
+      id: app
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: pkghaus
+        repositories: apt
+        permission-actions: write
+
+    - name: Dispatch the ingest
+      shell: bash
+      env:
+        TOKEN: ${{ steps.app.outputs.token }}
+        REPOSITORY: ${{ github.repository }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        # Retried: this is the one call in the chain whose failure is silent
+        # and unrepaired -- the tag exists, the archive is never told, and
+        # apt's ingest has no schedule to catch up on its own. A retried POST
+        # is safe, because the ingest re-plans from scratch and the archive's
+        # concurrency group collapses duplicates into one run.
+        #
+        # The inputs name the run and nothing else; the ingest builds whatever
+        # the fleet's newest tags provide that the archive lacks.
+        curl --fail-with-body -sS -X POST \
+          --retry 3 --retry-all-errors --retry-delay 2 \
+          -H "Authorization: Bearer ${TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          https://api.github.com/repos/pkghaus/apt/actions/workflows/ingest.yml/dispatches \
+          -d "$(jq -nc --arg r "$REPOSITORY" --arg t "$TAG" \
+                '{ref: "master", inputs: {repository: $r, tag: $t}}')"

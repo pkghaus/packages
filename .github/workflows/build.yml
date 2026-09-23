@@ -96,4 +96,31 @@ jobs:
     uses: pkghaus/action-debian-build/.github/workflows/build.yml@v1
     with:
       working_directory: ${{ matrix.package }}
-    secrets: inherit
+    # No secrets. The builder runs upstream projects' own build scripts and
+    # needs no credential, so it is handed none; the archive is told by
+    # notify-archive below, not by anything inside the build.
+
+  notify-archive:
+    # A validated tag is the archive's cue to ingest, instead of the archive
+    # polling. Only on a tag: a pull request builds to check, and a merge
+    # releases through release.yml, which dispatches the ingest itself. The
+    # default success() on `needs` means a build that failed on any suite or
+    # architecture tells the archive nothing.
+    name: notify archive
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out the shared actions
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions
+
+      - name: Tell the archive to ingest
+        uses: ./.github/actions/dispatch-ingest
+        with:
+          app-id: ${{ vars.PKGHAUS_DISPATCH_APP_ID }}
+          private-key: ${{ secrets.PKGHAUS_DISPATCH_APP_PRIVATE_KEY }}
+          tag: ${{ github.ref_name }}

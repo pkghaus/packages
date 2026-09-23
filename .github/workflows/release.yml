@@ -272,7 +272,9 @@ jobs:
     uses: pkghaus/action-debian-build/.github/workflows/build.yml@v1
     with:
       working_directory: ${{ matrix.entry.package }}
-    secrets: inherit
+    # No secrets. The builder runs upstream projects' own build scripts and
+    # needs no credential, so it is handed none; the archive is told by the
+    # release job below, not by anything inside the build.
 
   release:
     name: release ${{ matrix.entry.package }}
@@ -310,6 +312,14 @@ jobs:
       matrix:
         entry: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
+      # Only for the dispatch-ingest action. First, so a failure here stops the
+      # run before a tag exists rather than after.
+      - name: Check out the shared actions
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions
+
       - name: Tag the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -333,27 +343,8 @@ jobs:
           gh api "repos/$REPO/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$SHA"
 
       - name: Tell the archive to ingest
-        env:
-          TOKEN: ${{ secrets.APT_DISPATCH_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          TAG: ${{ matrix.entry.tag }}
-        run: |
-          # No silent skip on an empty token. The reusable build workflow has
-          # one because third parties call it without an archive; here an absent
-          # token means a package is tagged and the archive will never hear
-          # about it, which looks identical to a successful release.
-          if [ -z "${TOKEN}" ]; then
-            echo "::error::APT_DISPATCH_TOKEN is empty; $TAG is tagged but unpublished" >&2
-            exit 1
-          fi
-          # Retried: this is the one call in the chain whose failure is
-          # silent and unrepaired -- the tag exists, the archive is never told,
-          # and apt's ingest has no schedule to catch up on its own. A retried
-          # POST is safe, because the ingest re-plans from scratch and the
-          # archive's concurrency group collapses duplicates into one run.
-          curl --fail-with-body -sS -X POST \
-            --retry 3 --retry-all-errors --retry-delay 2 \
-            -H "Authorization: Bearer ${TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/pkghaus/apt/dispatches \
-            -d "{\"event_type\":\"package-tagged\",\"client_payload\":{\"repository\":\"${REPOSITORY}\",\"tag\":\"${TAG}\"}}"
+        uses: ./.github/actions/dispatch-ingest
+        with:
+          app-id: ${{ vars.PKGHAUS_DISPATCH_APP_ID }}
+          private-key: ${{ secrets.PKGHAUS_DISPATCH_APP_PRIVATE_KEY }}
+          tag: ${{ matrix.entry.tag }}
