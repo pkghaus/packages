@@ -6,7 +6,7 @@ One directory per package, holding a `package.conf` and a `debian/` tree.
 Packages are built from source at upstream's own release tags by
 [action-debian-build](https://github.com/pkghaus/action-debian-build), for
 Debian stable, testing and unstable on amd64 and arm64, and published to
-<https://apt.pkg.haus>.
+[apt.pkg.haus](https://apt.pkg.haus).
 
 ## Layout
 
