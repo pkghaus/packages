@@ -1,3 +1,9 @@
+emeraldian (0.6.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Sat, 26 Sep 2026 21:13:22 +0000
+
 emeraldian (0.5.0-1) unstable; urgency=medium
 
   * Initial release.
