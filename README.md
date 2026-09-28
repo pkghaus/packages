@@ -36,10 +36,18 @@ suites. Pull the image first: a stale one can predate the pipeline's contract.
 ## Releasing
 
 Landing releases. Any commit on `master` that changes a package's
-`debian/changelog` builds that package for every suite and architecture, runs
-its DEP-8 tests, tags it `<package>/vX.Y.Z-N` at that commit, and tells the
-archive to ingest. That is true of a bump the automation lands unattended and of
-a change you push yourself.
+`debian/changelog` releases it: the package is built and DEP-8 tested for every
+suite and architecture, tagged `<package>/vX.Y.Z-N` at that commit, and the
+archive is told to ingest. That is true of a bump the automation lands
+unattended and of a change you push yourself.
+
+The build that gates the tag runs once per tree. A bump's own verification
+already ran it, so the release it dispatches skips the build. A merged pull
+request's green run counts too, when its head tree is identical to the merge
+commit's, it ran on the same `action-debian-build` `v1`, and it built every
+package the release plans (`scripts/prebuilt.sh`). Anything else is built by
+`release.yml` itself. The archive then builds every leg again from the tag, at
+ingest.
 
 The changelog and not `package.conf`, because the tag carries the Debian
 revision and that is the only file it exists in. A packaging-only revision
@@ -106,10 +114,10 @@ two-line diff would not catch.
 
 ### Nothing approves a bump
 
-Each one is built and DEP-8 tested across all three suites **before** it lands,
-and a package that fails is not landed. That gate is amd64 only; the full three
-suites by two architectures runs on the commit, which is also when anything
-reaches the archive, and a third time at ingest.
+Each one is built and DEP-8 tested across all three suites on both
+architectures **before** it lands, and a package that fails is not landed.
+Those are the legs `release.yml` would build, so the release a bump dispatches
+skips its own build; the archive builds every leg again at ingest.
 
 The land job asks about its own package's legs rather than the run's aggregate.
 Gating on the aggregate would let one broken package hold every other package's
@@ -139,15 +147,15 @@ one.
 ### Landing is releasing
 
 A bump lands its commit on `master` and then dispatches the release for that
-package, which builds it, tags it and tells the archive to ingest. See
-[Releasing](#releasing).
+package, which tags it and tells the archive to ingest; the bump's verification
+was the build. See [Releasing](#releasing).
 
 The dispatch is explicit, and has to be. `release.yml` also fires on a push to
 `master` that touches a changelog, but **a push made with `GITHUB_TOKEN` starts
 no workflow run** -- only `workflow_dispatch` and `repository_dispatch` do. That
 is the same reason `release.yml` dispatches the archive rather than letting the
 tag it creates trigger `build.yml`. Relying on the push trigger would land bumps
-that were never built, tagged or published, while the dashboard read them as
+that were never tagged or published, while the dashboard read them as
 current: `package.conf` would match upstream, which is the only question the
 drift check asks.
 
