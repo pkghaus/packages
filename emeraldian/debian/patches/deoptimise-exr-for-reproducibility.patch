@@ -1,10 +1,11 @@
 Description: Build exr at opt-level 1, for reproducibility on arm64
- emeraldian intermittently fails to reproduce on arm64. LLVM allocates
- registers non-deterministically in exr's DWA decoder
- (exr::compression::dwa::lossy_dct::decode_lossy_channels), swapping x10 and
- x11 across four instructions with identical semantics. zola 0.23.6-4 works
- around the same function the same way. exr arrives through ratatui-image's
- image-defaults feature, and debian/rules asserts it is still in Cargo.lock.
+ emeraldian intermittently fails to reproduce on arm64. LLVM compiles exr's
+ DWA decoder (exr::compression::dwa::lossy_dct::decode_lossy_channels)
+ non-deterministically: two builds of the same source can assign x10 and x11
+ the other way round across four instructions with identical semantics. zola
+ 0.23.6-4 works around the same function the same way. exr arrives through
+ ratatui-image's image-defaults feature, and debian/rules asserts it is still
+ in Cargo.lock.
  .
  A workaround, not a repair: drop it once LLVM fixes the non-determinism,
  confirmed over several builds on arm64.
@@ -17,8 +18,8 @@ Last-Update: 2026-09-28
  strip = true
  opt-level = 3
  
-+# See debian/patches/deoptimise-exr-for-reproducibility.patch: LLVM's
-+# register allocation in exr's DWA decoder varies between builds on arm64.
++# See debian/patches/deoptimise-exr-for-reproducibility.patch: LLVM compiles
++# exr's DWA decoder non-deterministically on arm64.
 +[profile.release.package.exr]
 +opt-level = 1
 +
