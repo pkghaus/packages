@@ -1,3 +1,13 @@
+emeraldian (0.6.0-2) unstable; urgency=medium
+
+  * Build exr at opt-level 1, for reproducibility on arm64. LLVM compiles
+    exr's DWA decoder non-deterministically there, which shows up as
+    registers assigned differently from build to build; zola 0.23.6-4 works
+    around the same function. exr comes in through ratatui-image's
+    image-defaults. amd64 was unaffected.
+
+ -- pkg.haus archive <archive@pkg.haus>  Mon, 28 Sep 2026 14:31:31 +0200
+
 emeraldian (0.6.0-1) unstable; urgency=medium
 
   * New upstream release

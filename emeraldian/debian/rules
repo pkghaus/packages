@@ -42,6 +42,15 @@ export RUSTUP_TOOLCHAIN := 1.98.1
 %:
 	dh $@
 
+# debian/patches/deoptimise-exr-for-reproducibility.patch overrides exr, which
+# arrives transitively. A profile override for a package no longer in the
+# graph is only a cargo warning, so the workaround would stop silently.
+execute_after_dh_auto_configure:
+	grep -qx 'name = "exr"' Cargo.lock || { \
+	    echo 'FATAL: exr left Cargo.lock, so the opt-level override in' >&2; \
+	    echo '  deoptimise-exr-for-reproducibility.patch is doing nothing' >&2; \
+	    exit 1; }
+
 override_dh_auto_clean:
 	cargo clean
 	rm -rf $(CURDIR)/.cargo
