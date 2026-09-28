@@ -38,6 +38,7 @@ rainfrog
 rathole
 rustic
 superfile
+tincan
 typst
 vale
 vegeta

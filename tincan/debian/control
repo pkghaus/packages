@@ -1,0 +1,37 @@
+Source: tincan
+Section: net
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ ca-certificates,
+ debhelper-compat (= 13),
+ help2man,
+ libasound2-dev,
+ libopus-dev,
+ pkgconf,
+ rustup,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://github.com/bilalyazicioglu/tincan-cli
+
+Package: tincan
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Suggests:
+ wl-clipboard | xclip | xsel,
+Description: peer-to-peer voice and text chat for the terminal
+ tincan opens a chat room in the terminal, reached by room name and
+ passphrase or by an invite code. A room has text channels and voice, with
+ Opus audio, noise suppression, push-to-talk and a choice of microphone and
+ speaker. Voice is optional: without a working audio device the session
+ carries on as text only.
+ .
+ Peers find each other and get through NAT with iroh's default n0
+ infrastructure, public relay servers and a DNS discovery service that n0
+ runs, which also relay the encrypted traffic when no direct path can be
+ made. A room cannot open, or be joined, without reaching them.
+ .
+ The invite code is copied to the clipboard when wl-copy, xclip or xsel is
+ installed.

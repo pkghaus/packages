@@ -1,0 +1,66 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+# Without the remap the binary embeds the build directory.
+export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
+
+# In-tree, so the remap above covers the registry sources as well. Upstream
+# ships no .cargo/config.toml at this path for the clean target to delete.
+export CARGO_HOME := $(CURDIR)/.cargo
+
+# rustc is not a Debian package, so this line, which ships in the .dsc, is the
+# only record of the compiler. Cargo.toml's rust-version is 1.91. Move it with
+# each upstream bump.
+export RUSTUP_TOOLCHAIN := 1.98.1
+
+MAN_NAME := $(shell awk '/^Description: /{sub(/^Description: /,""); print; exit}' debian/control)
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	cargo clean
+	rm -rf $(CURDIR)/.cargo debian/completions
+	rm -f debian/tincan.1
+
+override_dh_auto_build:
+	cargo build --release --locked
+	test -n '$(DEB_VERSION_UPSTREAM)'
+	./target/release/tincan --version | grep -qxF 'tincan $(DEB_VERSION_UPSTREAM)'
+	# audiopus_sys links Debian's libopus when pkg-config finds it, and quietly
+	# builds its bundled copy when it does not.
+	readelf -d target/release/tincan | grep -qF 'Shared library: [libopus.so.0]'
+	readelf -d target/release/tincan | grep -qF 'Shared library: [libasound.so.2]'
+
+execute_after_dh_auto_build:
+	mkdir -p debian/completions
+	./target/release/tincan completions bash > debian/completions/tincan
+	./target/release/tincan completions fish > debian/completions/tincan.fish
+	./target/release/tincan completions zsh > debian/completions/_tincan
+	grep -q 'complete .*tincan' debian/completions/tincan
+	grep -q 'complete -c tincan' debian/completions/tincan.fish
+	grep -q '#compdef tincan' debian/completions/_tincan
+	# The man page comes from the program's own --help; upstream ships none.
+	# --locale=C.UTF-8 keeps help2man from turning non-ASCII into "?", and
+	# --version-string keeps the page title off the first word of --version.
+	test -n '$(MAN_NAME)'
+	help2man --no-info --section=1 --locale=C.UTF-8 --name='$(MAN_NAME)' \
+		--version-string='$(DEB_VERSION_UPSTREAM)' \
+		debian/help2man/tincan > debian/tincan.1
+	! grep -qF 't i n c a n' debian/tincan.1
+	# A page generated from an error message has no option list.
+	test "$$(grep -cE '^\.(TP|HP|IP|SS)' debian/tincan.1)" -ge 1
+
+# Upstream's tests are not run here, as in the rest of the fleet: debian/tests
+# and the pre-release smoke test cover function.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm0755 target/release/tincan debian/tincan/usr/bin/tincan
+	install -Dm0644 debian/completions/tincan \
+		debian/tincan/usr/share/bash-completion/completions/tincan
+	install -Dm0644 debian/completions/tincan.fish \
+		debian/tincan/usr/share/fish/vendor_completions.d/tincan.fish
+	install -Dm0644 debian/completions/_tincan \
+		debian/tincan/usr/share/zsh/vendor-completions/_tincan

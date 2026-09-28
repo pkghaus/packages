@@ -1,0 +1,15 @@
+Tests: cli-contract
+# bash for `bash -n` over the generated completion script.
+Depends: @, bash
+Restrictions: allow-stderr
+
+Tests: audio-devices
+# Nothing beyond the package: the test defines its own ALSA device in
+# ~/.asoundrc, on the null plugin libasound2 always carries.
+Depends: @
+Restrictions: allow-stderr
+
+Tests: host-starts
+# tmux, because host draws for a terminal and waits at a prompt.
+Depends: @, tmux
+Restrictions: allow-stderr
