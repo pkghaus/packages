@@ -1,0 +1,51 @@
+#!/bin/bash
+#
+# The audio half of tincan, as far as a testbed with no sound card reaches: it
+# enumerates devices through ALSA, the way it will find a real microphone.
+#
+# The device is defined here, in ~/.asoundrc, on the null plugin, with a name
+# nothing else could produce. Listed with the file and absent without it means
+# the list came from libasound reading this configuration rather than from
+# anything built into the binary.
+#
+# What this does NOT prove: that audio flows. Voice needs two peers and n0's
+# servers; that is exercised before release, with real speech, outside CI.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+export HOME="$WORK/home"
+mkdir -p "$HOME"
+NAME="pkghaus dep8 device $$"
+out="$WORK/devices.out"
+
+# Without the configuration first: the name must not appear.
+timeout 20 tincan devices >"$out" 2>&1 || {
+    echo "tincan devices failed with no configuration" >&2; cat "$out" >&2; exit 1; }
+if grep -qF "$NAME" "$out"; then
+    echo "the test device was listed before it was configured" >&2; cat "$out" >&2; exit 1
+fi
+if ! grep -qF 'MICROPHONES' "$out" || ! grep -qF 'SPEAKERS' "$out"; then
+    echo "tincan devices printed no device lists" >&2; cat "$out" >&2; exit 1
+fi
+
+cat > "$HOME/.asoundrc" <<EOF
+pcm.pkghaus_dep8 {
+    type null
+    hint { show on; description "$NAME" }
+}
+EOF
+
+timeout 20 tincan devices >"$out" 2>&1 || {
+    echo "tincan devices failed with the test device configured" >&2; cat "$out" >&2; exit 1; }
+# Under both headings: a null device can be opened for capture and playback.
+for section in MICROPHONES SPEAKERS; do
+    if ! sed -n "/$section/,/^\$/p" "$out" | grep -qF "$NAME"; then
+        echo "the configured device is missing under $section" >&2
+        cat "$out" >&2
+        exit 1
+    fi
+done
+
+echo "tincan listed an ALSA device defined for this test, and only once it was defined"

@@ -1,0 +1,5 @@
+#!/bin/sh
+# help2man runs this in place of the binary, and names the page after it: the
+# real --help opens with an ASCII banner, which would become DESCRIPTION's top.
+# Everything before the first line starting at column 0 is the banner.
+./target/release/tincan "$@" | sed -n '/^[^ ]/,$p'

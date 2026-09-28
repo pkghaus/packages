@@ -1,0 +1,66 @@
+#!/bin/bash
+#
+# What tincan answers without a network or a terminal: its version, its
+# commands, the completion scripts, and how join reads its argument.
+#
+# join is the discriminating part. An argument shaped like an invite code goes to
+# the decoder, anything else is a room name that needs a passphrase, and both
+# fail before any network with different messages. A binary that ignored its
+# argument could produce at most one of them.
+#
+# What this does NOT prove: that a room opens or anyone connects. That needs n0's
+# servers, which this testbed may not reach; see host-starts.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+export HOME="$WORK/home"
+mkdir -p "$HOME"
+
+want="tincan $(dpkg-query -W -f='${Version}' tincan | sed 's/-[^-]*$//')"
+reported="$(tincan --version)"
+if [ "$reported" != "$want" ]; then
+    echo "tincan --version said [$reported], expected [$want]" >&2
+    exit 1
+fi
+
+help="$(tincan --help)"
+for cmd in host join devices completions; do
+    if ! printf '%s\n' "$help" | grep -qE "^  $cmd "; then
+        echo "--help does not list the $cmd command" >&2
+        printf '%s\n' "$help" >&2
+        exit 1
+    fi
+done
+
+# The shipped scripts must be what this binary generates, or they complete
+# options it no longer has.
+check_completion() { # <shell> <installed path> <marker>
+    tincan completions "$1" > "$WORK/gen.$1"
+    grep -qF -- "$3" "$WORK/gen.$1" || {
+        echo "tincan completions $1 lacks [$3]" >&2; exit 1; }
+    cmp -s "$WORK/gen.$1" "$2" || {
+        echo "$2 differs from what tincan completions $1 generates" >&2; exit 1; }
+}
+check_completion bash /usr/share/bash-completion/completions/tincan 'complete -F _tincan'
+check_completion zsh /usr/share/zsh/vendor-completions/_tincan '#compdef tincan'
+check_completion fish /usr/share/fish/vendor_completions.d/tincan.fish 'complete -c tincan'
+bash -n /usr/share/bash-completion/completions/tincan
+
+# Code-shaped, 52 letters and digits, but '1' is not in the base32 alphabet.
+bad_code="aaaa-aaaa-aaaa-aaaa-aaaa-aaaa-aaaa-aaaa-aaaa-aaaa-aaaa-aaaa-aaa1"
+out="$WORK/join.out"
+if timeout 20 tincan join "$bad_code" --no-voice </dev/null >"$out" 2>&1; then
+    echo "join accepted a malformed invite code" >&2; cat "$out" >&2; exit 1
+fi
+grep -qF 'invalid character' "$out" || {
+    echo "a malformed invite code was not rejected by the decoder" >&2; cat "$out" >&2; exit 1; }
+
+if timeout 20 tincan join some-room --no-voice </dev/null >"$out" 2>&1; then
+    echo "join by room name succeeded with no passphrase" >&2; cat "$out" >&2; exit 1
+fi
+grep -qF 'needs its passphrase' "$out" || {
+    echo "a room name with no passphrase was not refused as such" >&2; cat "$out" >&2; exit 1; }
+
+echo "$reported: commands listed, completions current, join told a bad code from a room name"

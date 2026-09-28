@@ -1,0 +1,78 @@
+#!/bin/bash
+#
+# tincan host brings its network endpoint up and then waits, which is as far as
+# a room gets without n0's servers. Whether this testbed can reach them is not
+# something the test may depend on, so it accepts either state and nothing else:
+#
+#   offline   "connecting to the network" shown, process still alive 10 s later
+#   online    an invite code of the right shape: 13 groups of 4 base32 characters
+#
+# Offline it must also hold a bound UDP socket. Dying, an error, or showing
+# neither state fails. Read a pass as "the binary starts and binds its
+# endpoint", not "rooms work": two peers talking, text and voice, is exercised
+# before release outside CI.
+
+set -euo pipefail
+
+WORK="${AUTOPKGTEST_TMP:-$(mktemp -d)}"
+cd "$WORK"
+export HOME="$WORK/home"
+mkdir -p "$HOME"
+
+SESSION=tincan-dep8
+pane="$WORK/pane.txt"
+cleanup() { tmux kill-session -t "$SESSION" 2>/dev/null || true; }
+trap cleanup EXIT
+
+# The marker after tincan makes an exit visible in the pane, however early.
+tmux -f /dev/null new-session -d -x 120 -y 40 -s "$SESSION" \
+    "tincan host --no-voice -n dep8; echo tincan-exited rc=\$?; sleep 3600"
+
+snap() { tmux capture-pane -p -t "$SESSION" > "$pane" 2>/dev/null || true; }
+dead() { grep -qF 'tincan-exited' "$pane"; }
+code_re='tincan join ([a-z2-7]{4}-){12}[a-z2-7]{4}'
+
+seen=""
+for _ in $(seq 1 40); do
+    snap
+    if grep -qE "$code_re" "$pane"; then seen=code; break; fi
+    if dead; then break; fi
+    sleep 0.5
+done
+snap
+if dead || grep -qF 'Error:' "$pane"; then
+    echo "tincan host exited or reported an error" >&2; cat "$pane" >&2; exit 1
+fi
+
+if [ "$seen" = code ]; then
+    echo "online: the room opened with $(grep -oE "$code_re" "$pane" | head -1 | cut -c1-24)..."
+    exit 0
+fi
+
+grep -qF 'connecting to the network' "$pane" || {
+    echo "tincan host showed neither the connecting state nor an invite code" >&2
+    cat "$pane" >&2
+    exit 1
+}
+sleep 10
+snap
+if dead || grep -qF 'Error:' "$pane"; then
+    echo "tincan host died while waiting for the network" >&2; cat "$pane" >&2; exit 1
+fi
+
+# Waiting is not proof of a bound endpoint, so count the UDP sockets the process
+# holds, matching its socket inodes against /proc/net/udp{,6}. No procps here.
+pid=""
+for p in /proc/[0-9]*; do
+    if [ "$(cat "$p/comm" 2>/dev/null)" = tincan ]; then pid="${p#/proc/}"; break; fi
+done
+[ -n "$pid" ] || { echo "no tincan process is running" >&2; exit 1; }
+inodes="$(readlink /proc/"$pid"/fd/* 2>/dev/null | sed -n 's/^socket:\[\([0-9]*\)\]$/\1/p' | tr '\n' ' ')"
+udp="$(awk -v list="$inodes" '
+    BEGIN { n = split(list, a, " "); for (i = 1; i <= n; i++) want[a[i]] = 1 }
+    FNR > 1 && ($10 in want) { c++ }
+    END { print c + 0 }' /proc/net/udp /proc/net/udp6)"
+if [ "$udp" -lt 1 ]; then
+    echo "tincan host is waiting but holds no UDP socket" >&2; exit 1
+fi
+echo "offline: tincan host holds $udp bound UDP socket(s) and is waiting for the network"
