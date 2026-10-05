@@ -49,6 +49,9 @@ override_dh_auto_clean:
 # unreproducible: openssl-sys embeds its OUT_DIR and the CFLAGS it was handed as
 # string literals, which --remap-path-prefix cannot rewrite.
 override_dh_auto_build:
+	# cc 1.6.0 lets dpkg's -O2 past aws-lc-sys's -O0 guard and jitterentropy
+	# refuses to compile (aws-lc-rs issue 1252); 1.5.1 still honours it.
+	cargo update -p cc --precise 1.5.1
 	cargo build --release --no-default-features --features cli
 
 override_dh_auto_install:

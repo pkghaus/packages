@@ -16,6 +16,7 @@ Homepage: https://github.com/Y2Z/monolith
 Package: monolith
 Architecture: any
 Depends:
+ ca-certificates,
  ${misc:Depends},
  ${shlibs:Depends},
 Description: save any web page as a single self-contained HTML file

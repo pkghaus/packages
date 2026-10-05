@@ -1,3 +1,15 @@
+monolith (2.11.0-1) unstable; urgency=medium
+
+  * New upstream release
+  * TLS is now rustls on a statically linked AWS-LC (upstream moved to
+    reqwest 0.13), so the binary no longer links the system OpenSSL.
+  * Add ca-certificates dependency; 2.11.0 panics at startup without a
+    system CA store, even on a local file.
+  * Build with cc 1.5.1: cc 1.6.0 lets dpkg's -O2 reach aws-lc-sys's
+    jitterentropy, which refuses to compile optimised.
+
+ -- pkg.haus archive <archive@pkg.haus>  Mon, 05 Oct 2026 07:49:27 +0200
+
 monolith (2.10.1-2) unstable; urgency=high
 
   * Link against the system OpenSSL. The previous build statically linked a
