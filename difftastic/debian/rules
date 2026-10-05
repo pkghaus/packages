@@ -17,6 +17,10 @@
 # build dominated by rustc, so serialising them costs little.
 export RAYON_NUM_THREADS = 1
 
+# jemalloc's configure otherwise reads the address width from the build CPU
+# (cpuid on x86_64), so amd64 binaries followed the runner. aarch64 gets 48.
+export JEMALLOC_SYS_WITH_LG_VADDR = 48
+
 DPKG_EXPORT_BUILDFLAGS = 1
 include /usr/share/dpkg/buildflags.mk
 
