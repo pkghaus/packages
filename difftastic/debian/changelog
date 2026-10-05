@@ -1,3 +1,11 @@
+difftastic (0.71.0-2) unstable; urgency=medium
+
+  * Pin jemalloc's virtual address width to 48 bits. Its configure read the
+    width from the build machine's CPU, so an amd64 build differed by which
+    runner it landed on, and a rebuild could not reproduce it.
+
+ -- pkg.haus archive <archive@pkg.haus>  Mon, 05 Oct 2026 19:09:14 +0200
+
 difftastic (0.71.0-1) unstable; urgency=medium
 
   * New upstream release
