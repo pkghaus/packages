@@ -1,3 +1,9 @@
+fx (40.0.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Tue, 06 Oct 2026 00:05:52 +0000
+
 fx (39.2.0-2) unstable; urgency=medium
 
   * Publish this version's source package and build record at
