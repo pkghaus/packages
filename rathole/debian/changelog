@@ -1,3 +1,12 @@
+rathole (0.5.0-3) unstable; urgency=medium
+
+  * Ship the time 0.3.36 Cargo.lock as a patch and build with --locked.
+    The build ran cargo update, which added powerfmt at whatever version
+    crates.io offered that day, so a rebuild after powerfmt 0.2.1
+    (2026-10-05) no longer reproduced the binary.
+
+ -- pkg.haus archive <archive@pkg.haus>  Tue, 06 Oct 2026 08:51:44 +0200
+
 rathole (0.5.0-2) unstable; urgency=medium
 
   * Build reproducibly: identical bytes across build path, hostname, locale,
