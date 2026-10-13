@@ -180,6 +180,10 @@ latest_tag() {
     body="$(api "repos/$repo/releases/latest" "$host")" && rc=0 || rc=$?
     case "$rc" in
         0)
+            # Without jq the parse would be empty and silently fall through
+            # to the tag list, which includes prereleases.
+            command -v jq >/dev/null 2>&1 \
+                || { echo "upstream.sh: jq is required" >&2; return 1; }
             tag="$(printf '%s' "$body" | jq -r '.tag_name // empty')"
             if [ -n "$tag" ]; then
                 printf '%s\n' "$tag"

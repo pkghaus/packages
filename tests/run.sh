@@ -27,7 +27,7 @@ fail=0
 # The count goes through a file because a variable incremented in a subshell
 # never reaches this scope; traps reset in subshells, so the cleanup fires once.
 # Update the number deliberately: that edit is someone noticing it moved.
-EXPECTED_ASSERTIONS=204
+EXPECTED_ASSERTIONS=209
 TALLY="$(mktemp)"
 trap 'rm -f "$TALLY"' EXIT
 
@@ -320,7 +320,7 @@ FAKE
       export GIT_FAIL GIT_REFS
       # 404: zig publishes tags and no releases, so the tag list is the answer.
       eq "a Codeberg project with no releases resolves from its tag list" "0.16.0" \
-         "$(CURL_STATUS=404 CURL_BODY='{"message":"The target could not be found."}' \
+         "$(CURL_STATUS=404 CURL_BODY='{"tag_name":"v0.0.0-should-not-be-used"}' \
             latest_tag ziglang/zig codeberg.org)"
       eq "  gh was NOT asked (it speaks GitHub only)" "0" "$(grep -c '^repos/' "$log")"
       eq "  the API call went to the Forgejo base" "1" \
@@ -408,15 +408,30 @@ FAKE
     eq "curl path: 500 is exit 1" "1" "$rc"
 
     # A transport failure (curl exit 7) is a refusal, not "no releases": it
-    # must not reach the tag-list fallback.
-    CURL_FAIL=1
+    # must not reach the tag-list fallback. The status and body are a valid
+    # release, so only CURL_FAIL can account for the refusal.
+    CURL_BODY='{"tag_name":"v9.9.9"}' CURL_STATUS=200 CURL_FAIL=1
     out="$(PATH="$bin" api "repos/x/y/releases/latest")" && rc=0 || rc=$?
     eq "curl path: a transport failure is exit 1" "1" "$rc"
+    : > "$log"
     err="$(PATH="$bin" latest_tag x/y 2>&1 >/dev/null)" && rc=0 || rc=$?
     eq "curl path: a transport failure refuses to resolve" "1" "$rc"
     eq "  and names releases/latest" "1" \
        "$(printf '%s' "$err" | grep -c 'cannot reach releases/latest')"
+    eq "  and the tag list was not consulted" "0" "$(grep -c 'ls-remote' "$log")"
     unset CURL_FAIL
+
+    # No jq on PATH: a 200 cannot be parsed, which must refuse rather than
+    # fall through to a tag list that includes prereleases.
+    CURL_BODY='{"tag_name":"v1.2.3"}' CURL_STATUS=200
+    GIT_FAIL=0 GIT_REFS="$(printf 'a\trefs/tags/v1.2.3\nb\trefs/tags/v2.0.0-rc1\n')"
+    export GIT_FAIL GIT_REFS
+    eq "no jq is on the narrowed PATH" "" "$(PATH="$bin" command -v jq || true)"
+    : > "$log"
+    err="$(PATH="$bin" latest_tag x/y 2>&1 >/dev/null)" && rc=0 || rc=$?
+    eq "curl path: no jq refuses to resolve" "1" "$rc"
+    eq "  and says jq is required" "1" "$(printf '%s' "$err" | grep -c 'jq is required')"
+    eq "  and the tag list was not consulted" "0" "$(grep -c 'ls-remote' "$log")"
 
     CURL_BODY='{"tag_name":"v1.2.3"}' CURL_STATUS=200
     out="$(PATH="$bin" api "repos/x/y/releases/latest")" && rc=0 || rc=$?
