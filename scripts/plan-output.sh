@@ -2,12 +2,10 @@
 #
 # Print the two step outputs every plan in this repository produces.
 #
-#   scripts/plan-output.sh <json-array> [name] >> "$GITHUB_OUTPUT"
+#   scripts/plan-output.sh <json-array> >> "$GITHUB_OUTPUT"
 #
-#   <name>=<json-array>
+#   matrix=<json-array>
 #   has_work=true|false
-#
-# <name> defaults to "matrix"; build.yml's plan calls its output "packages".
 #
 # One file because the alternative is four copies -- build.yml, bump.yml, and
 # both paths of release.yml's plan step -- each re-deriving the same count and
@@ -27,8 +25,7 @@
 set -euo pipefail
 shopt -s inherit_errexit
 
-json="${1?usage: plan-output.sh <json-array> [name]}"
-name="${2:-matrix}"
+json="${1?usage: plan-output.sh <json-array>}"
 
 # Counted by parsing, not by grepping for a key. Counting occurrences of the
 # string "package" is right only for bump.yml's row shape and silently wrong
@@ -40,5 +37,5 @@ if [ "$count" -gt 0 ]; then
     has_work=true
 fi
 
-printf '%s=%s\n' "$name" "$json"
+printf 'matrix=%s\n' "$json"
 printf 'has_work=%s\n' "$has_work"

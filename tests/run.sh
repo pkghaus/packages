@@ -27,7 +27,7 @@ fail=0
 # The count goes through a file because a variable incremented in a subshell
 # never reaches this scope; traps reset in subshells, so the cleanup fires once.
 # Update the number deliberately: that edit is someone noticing it moved.
-EXPECTED_ASSERTIONS=201
+EXPECTED_ASSERTIONS=204
 TALLY="$(mktemp)"
 trap 'rm -f "$TALLY"' EXIT
 
@@ -95,8 +95,8 @@ echo "upstream bump"
     eq "the bump leaves a single mtime across the package" \
        "1" "$(find "$work/mt" -printf '%T@\n' | sort -u | wc -l)"
 
-    # bump.yml parses this line to fill the PR title and the tag command in
-    # its body. The shape is a contract, not just a log message.
+    # bump.yml parses this line for the new version, which fills the commit
+    # message and the release tag. The shape is a contract, not just a log message.
     make_pkg "$work/e" fmt 1.0.0 "3.0 (quilt)"
     eq "the result line is '<source> <old> -> <new>'" \
        "fmt 1.0.0-1 -> 1.2.3-1" "$( ( bump "$work/e" v1.2.3 ) 2>/dev/null )"
@@ -319,9 +319,9 @@ FAKE
       GIT_FAIL=0 GIT_REFS="$(printf 'a\trefs/tags/0.15.2\nb\trefs/tags/0.16.0\n')"
       export GIT_FAIL GIT_REFS
       # 404: zig publishes tags and no releases, so the tag list is the answer.
-      CURL_STATUS=404 CURL_BODY='{"message":"The target could not be found."}' \
-        eq "a Codeberg project with no releases resolves from its tag list" "0.16.0" \
-           "$(CURL_STATUS=404 latest_tag ziglang/zig codeberg.org)"
+      eq "a Codeberg project with no releases resolves from its tag list" "0.16.0" \
+         "$(CURL_STATUS=404 CURL_BODY='{"message":"The target could not be found."}' \
+            latest_tag ziglang/zig codeberg.org)"
       eq "  gh was NOT asked (it speaks GitHub only)" "0" "$(grep -c '^repos/' "$log")"
       eq "  the API call went to the Forgejo base" "1" \
          "$(grep -c 'curl https://codeberg.org/api/v1/repos/ziglang/zig/releases/latest' "$log")"
@@ -394,27 +394,31 @@ FAKE
     # The curl branch needs only builtins plus curl, so a one-entry PATH is
     # enough.
     rm -f "$bin/gh"
-    cat > "$bin/curl" <<'FAKE'
-#!/bin/sh
-# Mimics -w '\n%{http_code}': body, newline, status.
-printf '%s\n%s' "$CURL_BODY" "$CURL_CODE"
-FAKE
-    chmod +x "$bin/curl"
-    export CURL_BODY CURL_CODE
-
     eq "the real gh is out of reach for these" "" \
        "$(PATH="$bin" command -v gh || true)"
 
-    CURL_BODY='{"message":"Not Found"}' CURL_CODE=404
+    export CURL_BODY CURL_STATUS CURL_FAIL
+    CURL_BODY='{"message":"Not Found"}' CURL_STATUS=404
     out="$(PATH="$bin" api "repos/x/y/releases/latest")" && rc=0 || rc=$?
     eq "curl path: 404 is exit 3" "3" "$rc"
     eq "curl path: no body on a 404" "" "$out"
 
-    CURL_BODY='{"message":"boom"}' CURL_CODE=500
+    CURL_BODY='{"message":"boom"}' CURL_STATUS=500
     out="$(PATH="$bin" api "repos/x/y/releases/latest")" && rc=0 || rc=$?
     eq "curl path: 500 is exit 1" "1" "$rc"
 
-    CURL_BODY='{"tag_name":"v1.2.3"}' CURL_CODE=200
+    # A transport failure (curl exit 7) is a refusal, not "no releases": it
+    # must not reach the tag-list fallback.
+    CURL_FAIL=1
+    out="$(PATH="$bin" api "repos/x/y/releases/latest")" && rc=0 || rc=$?
+    eq "curl path: a transport failure is exit 1" "1" "$rc"
+    err="$(PATH="$bin" latest_tag x/y 2>&1 >/dev/null)" && rc=0 || rc=$?
+    eq "curl path: a transport failure refuses to resolve" "1" "$rc"
+    eq "  and names releases/latest" "1" \
+       "$(printf '%s' "$err" | grep -c 'cannot reach releases/latest')"
+    unset CURL_FAIL
+
+    CURL_BODY='{"tag_name":"v1.2.3"}' CURL_STATUS=200
     out="$(PATH="$bin" api "repos/x/y/releases/latest")" && rc=0 || rc=$?
     eq "curl path: 200 is exit 0" "0" "$rc"
     eq "curl path: the body survives the status split" '{"tag_name":"v1.2.3"}' "$out"
@@ -702,11 +706,11 @@ has_work=true' "$("$po" '[{"package":"croc","tag":"v1"}]')"
     eq "an empty plan says there is none" 'matrix=[]
 has_work=false' "$("$po" '[]')"
 
-    # build.yml's plan calls its output "packages" and emits plain strings, so
-    # the count cannot come from grepping for a "package" key -- which is what
-    # bump.yml did, correct only for its own row shape.
-    eq "the output name is selectable" 'packages=["croc","vale"]
-has_work=true' "$("$po" '["croc","vale"]' packages)"
+    # build.yml's plan emits plain strings, so the count cannot come from
+    # grepping for a "package" key -- which is what bump.yml did, correct only
+    # for its own row shape.
+    eq "an array of plain strings is counted" 'matrix=["croc","vale"]
+has_work=true' "$("$po" '["croc","vale"]')"
 
     # The load-bearing one. A plan that produced garbage must fail the step, not
     # report has_work=false: false skips the matrix and the run goes green

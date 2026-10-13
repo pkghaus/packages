@@ -80,7 +80,7 @@ main() {
     local merge_sha="${1:?usage: $0 <merge-sha> <planned-packages-json>}"
     local planned="${2:?}"
     local repo="${GITHUB_REPOSITORY:?}"
-    local builder_repo="${BUILDER_REPO:-pkghaus/action-debian-build}"
+    local builder_repo="pkghaus/action-debian-build"
 
     local pr_head merge_tree pr_tree run conclusion built_ref want_ref
     local built_pkgs want_pkgs

@@ -43,11 +43,9 @@ name: Bump upstream versions
 
 on:
   schedule:
-    # Every six hours, matching the archive's own watcher so the two never
-    # disagree about how current their view is.
-    #
-    # Affordable because a bump that passes lands in the same run, so a package
-    # is behind for exactly one run and is never rebuilt for work already done.
+    # Every six hours. Affordable because a bump that passes lands in the same
+    # run, so a package is behind for exactly one run and is never rebuilt for
+    # work already done.
     # No open-pull-request check: nothing opens one now that bumps land
     # directly, so it would be 25 gh calls a run that cannot match. What does
     # rebuild every six hours is a bump that keeps FAILING verification, until
@@ -108,8 +106,8 @@ jobs:
     name: ${{ matrix.entry.package }} ${{ matrix.entry.tag }} / ${{ matrix.suite }} / ${{ matrix.target.arch }}
     needs: plan
     # Not on a merge. A merge re-renders the dashboard and nothing else: building
-    # there would fire on someone else's bump landing, and open would raise pull
-    # requests for whatever unrelated packages happened to be behind at the time.
+    # there would fire on someone else's bump landing and bump whatever
+    # unrelated packages happened to be behind at the time.
     if: needs.plan.outputs.has_work == 'true' && github.event_name != 'push'
     runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 60

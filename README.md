@@ -130,10 +130,9 @@ nothing to say. With nobody approving anything it is the only place any of this
 is visible, so it carries what a person watching merges would have noticed
 without being asked:
 
-- **A status per row.** `landed, releasing`, `verification failed`,
-  `not verified`. One line for the whole run would not say which package it
-  meant, and with no pull requests there is no empty link column left to infer
-  it from.
+- **A status per row.** `verification failed`, `not verified`,
+  `verified, but landing failed`. One line for the whole run would not say
+  which package it meant.
 - **Packages the archive does not serve.** If a release build fails after the
   changelog has landed, `package.conf` still matches upstream, so the drift
   check calls the package current while users get the old version, and nothing
