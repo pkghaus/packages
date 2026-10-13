@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
-      packages: ${{ steps.plan.outputs.packages }}
+      matrix: ${{ steps.plan.outputs.matrix }}
       has_work: ${{ steps.plan.outputs.has_work }}
     steps:
       - uses: actions/checkout@v7
@@ -81,7 +81,7 @@ jobs:
           # was never what made this work.
           json="$(printf '%s\n' "$pkgs" | sed '/^$/d' | sort -u \
                   | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')"
-          scripts/plan-output.sh "$json" packages >> "$GITHUB_OUTPUT"
+          scripts/plan-output.sh "$json" >> "$GITHUB_OUTPUT"
           printf 'building: %s\n' "$json" >> "$GITHUB_STEP_SUMMARY"
 
   build:
@@ -92,7 +92,7 @@ jobs:
       # One package failing says nothing about the others.
       fail-fast: false
       matrix:
-        package: ${{ fromJSON(needs.plan.outputs.packages) }}
+        package: ${{ fromJSON(needs.plan.outputs.matrix) }}
     uses: pkghaus/action-debian-build/.github/workflows/build.yml@v1
     with:
       working_directory: ${{ matrix.package }}

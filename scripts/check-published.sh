@@ -26,7 +26,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PACKAGES_FILE="${PACKAGES_FILE:-packages.txt}"
 ROOT="${ROOT:-.}"
-ARCHIVE_BASE="${ARCHIVE_BASE:-https://apt.pkg.haus}"
+ARCHIVE_BASE="https://apt.pkg.haus"
 ARCHES="${ARCHES:-amd64 arm64}"
 
 # Overridden in the tests, which have no network. Anything that prints a

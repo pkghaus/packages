@@ -32,9 +32,6 @@ upstream_version() {
     printf '%s\n' "${1#"${1%%[0-9]*}"}"
 }
 
-# A native package is its own upstream: archive-keyring's version tracks the
-# signing key, not a release feed. Bumping it from a tag lookup is meaningless,
-# so it is refused rather than skipped silently.
 # Source name and full version from the changelog's first line, which is the
 # authority for both -- package.conf carries the upstream tag, not the Debian
 # version.

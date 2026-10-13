@@ -2,7 +2,7 @@
 #
 # Emits the bump work as a JSON array, for a workflow matrix:
 #
-#   [{"package":"croc","tag":"v11.3.5","version":"11.3.5"}]
+#   [{"package":"croc","tag":"v11.3.5"}]
 #
 # Every enrolled package whose upstream has a tag we are not packaging. There is
 # no staleness threshold and no filtering: a different tag string is the whole

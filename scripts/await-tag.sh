@@ -35,8 +35,8 @@ REPO="${REPO:-${GITHUB_REPOSITORY:-}}"
 # matrix is serialised, so with several packages bumping in one run each waits
 # for the ones before it. Generous enough to ride that out, and well inside the
 # land job's own timeout.
-ATTEMPTS="${AWAIT_TAG_ATTEMPTS:-60}"
-DELAY="${AWAIT_TAG_DELAY:-10}"
+ATTEMPTS=60
+DELAY=10
 
 # Overridden in the tests, which have no network and no time to spend.
 #

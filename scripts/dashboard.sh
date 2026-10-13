@@ -33,8 +33,8 @@ published_checked="${3:?}"
 run_url="${4:?}"
 
 REPO="${REPO:-${GITHUB_REPOSITORY:-}}"
-TITLE="${TITLE:-Upstream release drift}"
-MENTION="${MENTION:-@pkghaus/maintainers}"
+TITLE="Upstream release drift"
+MENTION="@pkghaus/maintainers"
 
 [ -n "$REPO" ] || { echo "dashboard: REPO is unset" >&2; exit 1; }
 
@@ -57,10 +57,8 @@ if [ -s "$body_file" ]; then
         # The mention goes in the opening body only. Mentioning is what
         # subscribes the team; repeating it on every rewrite would be noise,
         # and being subscribed is what makes later edits reach them anyway.
-        opening="$(mktemp)"
-        { printf '%s\n\n' "$MENTION"; cat "$body_file"; } > "$opening"
-        gh issue create --repo "$REPO" --title "$TITLE" --body-file "$opening"
-        rm -f "$opening"
+        gh issue create --repo "$REPO" --title "$TITLE" \
+            --body "$(printf '%s\n\n' "$MENTION"; cat "$body_file")"
     else
         gh issue edit "$number" --repo "$REPO" --body-file "$body_file"
     fi

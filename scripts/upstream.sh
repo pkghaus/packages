@@ -2,10 +2,8 @@
 #
 # Resolving a package's newest upstream release. Sourced, never run.
 #
-# Duplicated rather than shared: a shell function cannot cross a repository
-# boundary without a submodule or an action, and neither is worth it for fifty
-# lines. If this and the archive's watcher ever disagree about what "newest"
-# means, that is a bug in one of them.
+# plan-bumps.sh is the one resolver of "newest": drift detection lives only in
+# bump.yml.
 
 # gh first (it carries its own auth), then a token from the environment,
 # then anonymous. Anonymous works but shares a 60-requests-per-hour pool,
@@ -139,14 +137,6 @@ _api_once() {
         *)   return 1 ;;
     esac
 }
-# One field out of a JSON body, without requiring jq to be installed.
-json_field() {
-    if command -v jq >/dev/null 2>&1; then
-        jq -r "$2 // empty"
-    else
-        sed -n "s/.*\"${1}\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n1
-    fi
-}
 # Every tag the remote has, one per line.
 #
 # git rather than the API: ls-remote has no pagination, so this cannot miss a
@@ -190,7 +180,11 @@ latest_tag() {
     body="$(api "repos/$repo/releases/latest" "$host")" && rc=0 || rc=$?
     case "$rc" in
         0)
-            tag="$(printf '%s' "$body" | json_field tag_name '.tag_name')"
+            # Without jq the parse would be empty and silently fall through
+            # to the tag list, which includes prereleases.
+            command -v jq >/dev/null 2>&1 \
+                || { echo "upstream.sh: jq is required" >&2; return 1; }
+            tag="$(printf '%s' "$body" | jq -r '.tag_name // empty')"
             if [ -n "$tag" ]; then
                 printf '%s\n' "$tag"
                 return 0
