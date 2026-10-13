@@ -33,7 +33,9 @@ cat out.html; echo
 grep -q 'data:image/png;base64,' out.html \
     || { echo "the image was not inlined as a data URI" >&2; exit 1; }
 
-css="$(grep -o 'data:text/css;base64,[A-Za-z0-9+/=]*' out.html | head -1 | sed 's/^data:text\/css;base64,//')"
+# Media-type parameters are allowed: 2.11.4 started emitting ;charset=utf-8.
+# `|| true` keeps a non-match from exiting under pipefail before the message.
+css="$(grep -oE 'data:text/css(;[^;,"]+)*;base64,[A-Za-z0-9+/=]*' out.html | head -1 | sed 's/^.*;base64,//')" || true
 [ -n "$css" ] || { echo "the stylesheet was not inlined as a data URI" >&2; exit 1; }
 decoded="$(printf '%s' "$css" | base64 -d)"
 printf 'decoded stylesheet: %s\n' "$decoded"
