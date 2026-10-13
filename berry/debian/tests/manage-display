@@ -67,7 +67,8 @@ if ! kill -0 "$wm_pid" 2>/dev/null; then
     exit 1
 fi
 
-win="$(printf '%s\n' "$check" | grep -oE '0x[0-9a-f]+' | head -1)"
+# `|| true` keeps a non-match from exiting under pipefail before the message.
+win="$(printf '%s\n' "$check" | grep -oE '0x[0-9a-f]+' | head -1)" || true
 if [ -z "$win" ]; then
     echo "could not read the check window id from [$check]" >&2
     exit 1
