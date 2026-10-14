@@ -1,3 +1,9 @@
+frp (0.71.1-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 14 Oct 2026 11:51:30 +0000
+
 frp (0.71.0-2) unstable; urgency=medium
 
   * Publish this version's source package and build record at
