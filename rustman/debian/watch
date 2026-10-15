@@ -1,0 +1,5 @@
+version=4
+# Every release since 2026-06-14 is tagged -dev.N, and stray tags (v5,
+# v0.4.0, vv0.3.13) would outrank them, so the pattern names the scheme exactly.
+opts=filenamemangle=s/.+\/v?(\d\S+)\.tar\.gz/<project>-$1\.tar\.gz/ \
+  https://github.com/rust-man-org/rustman/tags .*/v(\d+\.\d+\.\d+-dev\.\d+)\.tar\.gz

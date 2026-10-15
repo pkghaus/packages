@@ -1,0 +1,106 @@
+#!/bin/bash
+# Types a URL into rustman's window and sends it, then asserts that a local
+# server received the request and that the 418 it answered is in rustman's
+# history, which proves the round trip and the system SQLite link.
+set -euo pipefail
+
+if [ "${1:-}" != --x-phase ]; then
+    exec xvfb-run -a --server-args="-screen 0 1280x800x24" "$0" --x-phase
+fi
+
+tmp="$AUTOPKGTEST_TMP"
+export HOME="$tmp/home" XDG_RUNTIME_DIR="$tmp/run"
+mkdir -m 700 "$HOME" "$XDG_RUNTIME_DIR"
+unset WAYLAND_DISPLAY XDG_DATA_HOME
+db="$HOME/.local/share/rustman/rustman.db"
+token="dep8-$$-$RANDOM"
+
+cat > "$tmp/server.py" <<'PY'
+import http.server
+
+class Teapot(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = b'{"teapot": true}'
+        self.send_response(418)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        print(self.path, flush=True)
+
+    def log_message(self, *args):
+        pass
+
+server = http.server.HTTPServer(("127.0.0.1", 0), Teapot)
+print(server.server_address[1], flush=True)
+server.serve_forever()
+PY
+
+python3 "$tmp/server.py" > "$tmp/server.log" &
+server=$!
+rustman > "$tmp/rustman.log" 2>&1 &
+app=$!
+trap 'kill "$app" "$server" 2>/dev/null || true' EXIT
+
+port=
+for _ in $(seq 50); do
+    port="$(head -n1 "$tmp/server.log" 2>/dev/null || true)"
+    [ -n "$port" ] && break
+    sleep 0.1
+done
+if [ -z "$port" ]; then
+    echo "the local server did not start" >&2
+    exit 1
+fi
+url="http://127.0.0.1:$port/$token"
+
+win="$(timeout 60 xdotool search --sync --name '^Rustman$' | head -n1 || true)"
+if [ -z "$win" ]; then
+    echo "no Rustman window within 60 s" >&2
+    cat "$tmp/rustman.log" >&2
+    exit 1
+fi
+
+# There is no window manager, so focus is set by hand. The window can map
+# before its widgets take input, so the whole entry is retried.
+sent=
+for _ in 1 2 3 4 5; do
+    xdotool windowfocus --sync "$win"
+    xdotool mousemove --window "$win" 700 65 click 1    # the URL field
+    xdotool key ctrl+a
+    xdotool type --delay 10 "$url"
+    xdotool key ctrl+Return
+    for _ in $(seq 20); do
+        if grep -qxF "/$token" "$tmp/server.log"; then
+            sent=1
+            break 2
+        fi
+        sleep 0.25
+    done
+done
+if [ -z "$sent" ]; then
+    echo "the server never received $url" >&2
+    cat "$tmp/rustman.log" >&2
+    exit 1
+fi
+
+status=
+for _ in $(seq 40); do
+    status="$(python3 - "$db" "$url" <<'PY' || true
+import sqlite3, sys
+try:
+    rows = sqlite3.connect(sys.argv[1]).execute(
+        "SELECT status FROM history WHERE url = ?", (sys.argv[2],)).fetchall()
+except sqlite3.Error:
+    rows = []
+print(rows[0][0] if rows else "")
+PY
+)"
+    [ -n "$status" ] && break
+    sleep 0.25
+done
+if [ "$status" != 418 ]; then
+    echo "history has status [$status] for $url, want 418" >&2
+    exit 1
+fi
+echo "rustman sent $url and recorded the 418 it got back"
