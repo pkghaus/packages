@@ -1,3 +1,15 @@
+i3status-rust (0.36.2-1) unstable; urgency=medium
+
+  * New upstream release
+  * Build-Depend on cmake, git and libclang-dev. The speedtest block now
+    uses cf-mach, whose boring-sys builds a vendored BoringSSL with cmake,
+    generates its bindings with bindgen, and runs git unconditionally to
+    apply a patch. The builder image ships git, so only a rebuilder would
+    have missed it.
+  * Drop libssl-dev: reqwest moved to rustls and nothing links OpenSSL.
+
+ -- pkg.haus archive <archive@pkg.haus>  Mon, 19 Oct 2026 08:28:59 +0200
+
 i3status-rust (0.36.1-2) unstable; urgency=medium
 
   * Stamp the upstream commit from debian/upstream-commit. build.rs shells
