@@ -5,9 +5,10 @@
 # plan-bumps.sh is the one resolver of "newest": drift detection lives only in
 # bump.yml.
 
-# gh first (it carries its own auth), then a token from the environment,
-# then anonymous. Anonymous works but shares a 60-requests-per-hour pool,
-# which one full run very nearly exhausts.
+# For GitHub: gh first (it carries its own auth), then a token from the
+# environment, then anonymous. Anonymous works but shares a 60-requests-per-hour
+# pool, which one full run very nearly exhausts. Other forges are always asked
+# anonymously.
 #
 # Three outcomes, not two, and keeping them apart is the point:
 #
@@ -37,9 +38,9 @@
 # with that identical message. Absent is absent; nothing here needs to care.
 # Retried on a transient failure, never on a 404.
 #
-# A blip reads as "no release or tag found", and plan-bumps.sh then skips the
-# package: no bump, no error, nothing said until the next scheduled run six
-# hours later. Absent, by contrast, is a real answer -- gotypist publishes no
+# A blip that outlasts the retries fails the lookup, and plan-bumps.sh then
+# skips the package: no bump, and the dashboard lists it as not checked until a
+# run reaches it. Absent, by contrast, is a real answer -- gotypist publishes no
 # releases at all -- so retrying a 404 would triple the cost of every package
 # in that state for no information.
 #
@@ -110,9 +111,12 @@ _api_once() {
         return "$rc"
     fi
 
+    # The token is GitHub's and goes to GitHub only. Sent to Codeberg it hands a
+    # credential to a third party, and Forgejo answers 401: "could not ask".
+    #
     # An `if` rather than `[ ... ] && auth=(...)`: as a bare && list whose test
     # fails, that statement returns 1 and takes the whole run down under set -e.
-    if [ -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
+    if [ "$host" = github.com ] && [ -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
         auth=(-H "Authorization: Bearer ${GH_TOKEN:-$GITHUB_TOKEN}")
     fi
 

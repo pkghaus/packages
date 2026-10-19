@@ -2,10 +2,11 @@
 #
 # Renders the drift dashboard body, or nothing at all when nothing is wrong.
 #
-#   scripts/drift-report.sh <matrix-json> <status-tsv> <stuck-json> <run-url> [verified]
+#   scripts/drift-report.sh <matrix-json> <status-tsv> <stuck-json> <skipped-json> <run-url> [verified]
 #
 # The dashboard is a problem list, not a work log. It names bumps that did not
-# land and packages whose changelog the archive does not serve. A bump that
+# land, packages the plan could not check against upstream, and packages whose
+# changelog the archive does not serve. A bump that
 # built, tested, landed and published leaves nothing here: the commit, the tag,
 # the release run and the archive already carry it.
 #
@@ -26,6 +27,10 @@
 # asking for one reads every planned package as "not verified", which is a false
 # alarm rather than a missing job. It renders the published check alone.
 #
+# <skipped-json> is required, with no default: an absent one would read as
+# "every package was checked", which is the claim it exists to stop. It renders
+# whatever <verified> says, because the plan ran its lookups either way.
+#
 # Two deliberate single-quotings that shellcheck reads as mistakes: the python3
 # body must not be expanded by the shell, and the backticks in the markdown are
 # code formatting rather than command substitution.
@@ -37,8 +42,9 @@ shopt -s inherit_errexit
 matrix="${1:?matrix json}"
 status_tsv="${2-}"
 stuck="${3:-[]}"
-run_url="${4:?run url}"
-verified="${5:-yes}"
+skipped_json="${4:?skipped json}"
+run_url="${5:?run url}"
+verified="${6:-yes}"
 
 export STATUS_TSV="$status_tsv"
 
@@ -101,6 +107,22 @@ if rows:
 ')"
 fi
 
+# Parsed even when it says "[]", so a malformed list fails the step rather than
+# reading as nothing skipped.
+unchecked="$(printf '%s' "$skipped_json" | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)
+if rows:
+    print("### Not checked against upstream")
+    print()
+    print("The plan could not check these against upstream, so nothing here can say whether they are behind, and nothing was bumped. The run log names each cause.")
+    print()
+    print("| package | reason |")
+    print("|---|---|")
+    for r in rows:
+        print("| `%s` | %s |" % (r["package"], r["reason"]))
+')"
+
 published=""
 if [ "$stuck" != "[]" ] && [ -n "$stuck" ]; then
     published="$(printf '%s' "$stuck" | python3 -c '
@@ -123,11 +145,12 @@ fi
 # Nothing to say. Not an empty issue body, no output at all: the caller reads
 # that as "close it", and an issue that exists only to report that it has
 # nothing to report is the surface this change removes.
-if [ -z "$bumps" ] && [ -z "$published" ]; then
+if [ -z "$bumps" ] && [ -z "$unchecked" ] && [ -z "$published" ]; then
     exit 0
 fi
 
 [ -z "$bumps" ]     || printf '%s\n\n' "$bumps"
+[ -z "$unchecked" ] || printf '%s\n\n' "$unchecked"
 [ -z "$published" ] || printf '%s\n\n' "$published"
 
 printf 'Bumps are resolved, built and DEP-8 tested every six hours, and land on master when they pass. Landing releases: the build, the tag and the archive ingest all follow from the commit. A package that lands and publishes cleanly is never listed here.\n\n'

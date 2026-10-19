@@ -25,7 +25,8 @@ name: Bump upstream versions
 # connecting a red release run to the merge that caused it. The dashboard states
 # both -- why a bump did not land, and which packages carry a changelog the
 # archive does not serve -- because otherwise the
-# failure mode of all this is silence.
+# failure mode of all this is silence. It also names any package the plan could
+# not check against upstream, which would otherwise read as current.
 #
 # It states only those. A bump that built, tested, landed and published is not
 # listed at all, and a run with nothing to say writes no issue. Listing the
@@ -85,6 +86,7 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       has_work: ${{ steps.plan.outputs.has_work }}
+      skipped: ${{ steps.plan.outputs.skipped }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -95,8 +97,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          matrix="$(scripts/plan-bumps.sh)"
+          matrix="$(scripts/plan-bumps.sh "$RUNNER_TEMP/skipped.json")"
           scripts/plan-output.sh "$matrix" >> "$GITHUB_OUTPUT"
+          # The packages the plan could not check, for the dashboard. One line
+          # of JSON, written by plan-bumps.sh itself.
+          printf 'skipped=%s\n' "$(cat "$RUNNER_TEMP/skipped.json")" >> "$GITHUB_OUTPUT"
           printf 'behind upstream: %s\n' "$matrix" >> "$GITHUB_STEP_SUMMARY"
 
   verify:
@@ -323,6 +328,7 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           EVENT: ${{ github.event_name }}
           MATRIX: ${{ needs.plan.outputs.matrix }}
+          SKIPPED: ${{ needs.plan.outputs.skipped }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           # A package packaged but not published is invisible to the drift check
@@ -373,7 +379,7 @@ jobs:
           # whether the plan found work: a run that lands a bump has has_work
           # true for its whole life, so keying the issue on that meant every
           # successful bump left one open until the next scheduled run.
-          scripts/drift-report.sh "$MATRIX" "$status" "$stuck" "$RUN_URL" "$verified" > body.md
+          scripts/drift-report.sh "$MATRIX" "$status" "$stuck" "$SKIPPED" "$RUN_URL" "$verified" > body.md
 
           # Creating, editing, closing or leaving the issue is one decision and
           # it lives in a script, where a test can reach it. It is the only

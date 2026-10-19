@@ -27,7 +27,7 @@ fail=0
 # The count goes through a file because a variable incremented in a subshell
 # never reaches this scope; traps reset in subshells, so the cleanup fires once.
 # Update the number deliberately: that edit is someone noticing it moved.
-EXPECTED_ASSERTIONS=209
+EXPECTED_ASSERTIONS=222
 TALLY="$(mktemp)"
 trap 'rm -f "$TALLY"' EXIT
 
@@ -179,6 +179,24 @@ echo "bump plan"
     mk behind v1.1.0
     eq "nothing behind produces an empty array" "[]" "$(plan)"
 
+    # A package the plan could not check is not a current one. It stays out of
+    # the matrix and goes on the skipped list, which the dashboard renders.
+    mk lost v1.0.0
+    printf 'behind\ncurrent\nlost\nghost\n' > "$work/packages.txt"
+    latest_tag() { case "$1" in x/behind) echo v1.2.0 ;; x/current) echo v2.0.0 ;; x/lost) return 1 ;; *) echo v9 ;; esac; }
+    eq "a failed lookup stays out of the matrix" '[{"package":"behind","tag":"v1.2.0"}]' \
+       "$(plan "$work/skipped.json" 2>/dev/null)"
+    eq "  and is on the skipped list with its reason, as is a missing directory" \
+       '[{"package":"lost","reason":"upstream lookup failed for github.com/x/lost; the plan log names the cause"},{"package":"ghost","reason":"no package.conf"}]' \
+       "$(cat "$work/skipped.json")"
+    eq "  and is still logged" "1" \
+       "$(plan 2>&1 >/dev/null | grep -c '^SKIP lost: upstream lookup failed')"
+
+    # Rewritten every run: a stale list would keep naming a package that is fine.
+    printf 'behind\ncurrent\n' > "$work/packages.txt"
+    plan "$work/skipped.json" >/dev/null 2>&1
+    eq "nothing skipped writes an empty list" "[]" "$(cat "$work/skipped.json")"
+
     rm -rf "$work"
     exit $((fail > 0))
 ) || fail=$((fail + 1))
@@ -223,11 +241,19 @@ FAKE
     # -w '\n%{http_code}'. The suite had no curl stub at all, so the entire
     # non-gh branch was only ever exercised by pointing API_BASE at a dead
     # port -- which tests the failure path and nothing else.
+    # It also logs any Authorization header, and with CURL_REJECT_AUTH=1 answers
+    # one with 401, which is what codeberg.org does with a GitHub token.
     cat > "$bin/curl" <<'FAKE'
 #!/bin/sh
-for a in "$@"; do case "$a" in http*) url="$a" ;; esac; done
+auth=no
+for a in "$@"; do case "$a" in http*) url="$a" ;; Authorization:*) auth=yes ;; esac; done
 printf '%s\n' "curl $url" >> "$ASKED"
+[ "$auth" = yes ] && printf '%s\n' "auth $url" >> "$ASKED"
 [ "${CURL_FAIL:-0}" = 1 ] && exit 7
+if [ "$auth" = yes ] && [ "${CURL_REJECT_AUTH:-0}" = 1 ]; then
+    printf '%s\n%s' '{"message":"invalid token"}' 401
+    exit 0
+fi
 printf '%s\n%s' "${CURL_BODY:-}" "${CURL_STATUS:-200}"
 exit 0
 FAKE
@@ -327,6 +353,14 @@ FAKE
          "$(grep -c 'curl https://codeberg.org/api/v1/repos/ziglang/zig/releases/latest' "$log")"
       eq "  the clone URL followed the host" "1" \
          "$(grep -c 'ls-remote --tags https://codeberg.org/ziglang/zig' "$log")"
+
+      # CI always has GH_TOKEN set, which every group here unsets. Sent to
+      # Codeberg, the 401 read as "could not ask" and zig was skipped every run.
+      : > "$log"
+      eq "a Codeberg lookup with GH_TOKEN set still resolves" "0.16.0" \
+         "$(GH_TOKEN=ghs_test CURL_REJECT_AUTH=1 CURL_STATUS=404 \
+            latest_tag ziglang/zig codeberg.org 2>/dev/null)"
+      eq "  and sent Codeberg no token" "0" "$(grep -c '^auth ' "$log")"
 
       # And a Codeberg project that DOES publish releases resolves from them,
       # without touching the tag list. fairyglade/ly answers exactly this.
@@ -437,6 +471,12 @@ FAKE
     out="$(PATH="$bin" api "repos/x/y/releases/latest")" && rc=0 || rc=$?
     eq "curl path: 200 is exit 0" "0" "$rc"
     eq "curl path: the body survives the status split" '{"tag_name":"v1.2.3"}' "$out"
+
+    # The control for "sent Codeberg no token": the stub does see one when it is
+    # sent, so that zero is a measurement and not a stub that cannot count.
+    : > "$log"
+    GH_TOKEN=ghs_test PATH="$bin" api "repos/x/y/releases/latest" >/dev/null
+    eq "curl path: GitHub is sent the token" "1" "$(grep -c '^auth ' "$log")"
 
     rm -rf "$bin"
     exit $((fail > 0))
@@ -747,7 +787,7 @@ echo "drift dashboard"
     report="$ROOT/scripts/drift-report.sh"
     two='[{"package":"a","tag":"v1"},{"package":"b","tag":"v2"}]'
     one='[{"package":"a","tag":"v1"}]'
-    render() { "$report" "$1" "$2" "$3" https://run/1 "${4:-yes}"; }
+    render() { "$report" "$1" "$2" "$3" "${5:-[]}" https://run/1 "${4:-yes}"; }
     # "<package>\t<verify>\t<land>", as bump-status.sh emits it.
     st() { printf '%s\t%s\t%s' "$1" "$2" "$3"; }
 
@@ -840,6 +880,28 @@ echo "drift dashboard"
        "$(render '[]' '' "$stuck" | grep -c 'Checked by https://run/1')"
     eq "and nothing wrong produces none" "" \
        "$(render '[]' '' '[]')"
+
+    # Packages the plan could not check. Without these the issue closed saying
+    # every package was current while zig had never been asked about.
+    lost='[{"package":"zig","reason":"upstream lookup failed for codeberg.org/ziglang/zig; the plan log names the cause"}]'
+    eq "an unchecked package alone produces a body" "1" \
+       "$(render '[]' '' '[]' yes "$lost" | grep -c '^### Not checked against upstream')"
+    eq "  naming the package and its reason" "1" \
+       "$(render '[]' '' '[]' yes "$lost" \
+          | grep -c '^| `zig` | upstream lookup failed for codeberg.org/ziglang/zig; the plan log names the cause |$')"
+    eq "  on an unverified run too, whose plan still ran" "1" \
+       "$(render '[]' '' '[]' no "$lost" | grep -c '^| `zig` |')"
+    eq "nothing skipped renders no such table" "0" \
+       "$(render "$one" "$(st a failure success)" '[]' | grep -c 'Not checked')"
+
+    # Required, and parsed even when empty: a list that did not arrive, or
+    # arrived broken, must not read as "nothing was skipped".
+    out="$("$report" '[]' '' '[]' '' https://run/1 2>/dev/null)" && rc=0 || rc=$?
+    if [ "$rc" -ne 0 ] && [ -z "$out" ]; then ok "a missing skipped list fails, printing nothing"
+    else no "a missing skipped list fails, printing nothing" "rc=$rc out=[$out]"; fi
+    out="$("$report" '[]' '' '[]' 'not json' https://run/1 2>/dev/null)" && rc=0 || rc=$?
+    if [ "$rc" -ne 0 ] && [ -z "$out" ]; then ok "a malformed skipped list fails, printing nothing"
+    else no "a malformed skipped list fails, printing nothing" "rc=$rc out=[$out]"; fi
 
     exit $((fail > 0))
 ) || fail=$((fail + 1))
