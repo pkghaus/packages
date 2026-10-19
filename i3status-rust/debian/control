@@ -4,10 +4,12 @@ Priority: optional
 Maintainer: pkg.haus archive <archive@pkg.haus>
 Build-Depends:
  ca-certificates,
+ cmake,
  debhelper-compat (= 13),
+ git,
+ libclang-dev,
  libpulse-dev,
  libsensors-dev,
- libssl-dev,
  pandoc,
  pkgconf,
  rustup,

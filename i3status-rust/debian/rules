@@ -11,7 +11,7 @@ include /usr/share/dpkg/pkg-info.mk
 #
 # Unlike xplr, upstream's .cargo/config.toml carries no `target.*.rustflags` --
 # it defines the `xtask` alias and nothing else -- so setting RUSTFLAGS here
-# replaces nothing and drops no upstream flag. Checked at v0.36.1; re-check on
+# replaces nothing and drops no upstream flag. Checked at v0.36.2; re-check on
 # an upstream bump, because the replace-not-append behaviour makes a new
 # rustflags line in that file silently disappear.
 export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
