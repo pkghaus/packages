@@ -9,9 +9,9 @@
 # against a Debian amd64 baseline of SSE2. An emulated CPU is what breaks the
 # coupling, so this runs zig under one.
 #
-# Instruction counting cannot replace it: the fixed build still contains 764
-# AVX-512 mnemonics, inside statically linked LLVM's runtime-dispatched paths,
-# and runs correctly on SSE2. Only execution distinguishes reachable from
+# Instruction counting cannot replace it: 0.16.0-2, with LLVM linked
+# statically, contained 764 AVX-512 mnemonics in LLVM's runtime-dispatched
+# paths and ran correctly on SSE2. Only execution distinguishes reachable from
 # dispatched.
 set -eu
 

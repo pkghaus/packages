@@ -6,11 +6,11 @@ Build-Depends:
  cmake,
  debhelper-compat (= 13),
  help2man,
- libclang-21-dev,
- liblld-21-dev,
- libpolly-21-dev,
+ libclang-22-dev,
+ liblld-22-dev,
+ libpolly-22-dev,
  libzstd-dev,
- llvm-21-dev,
+ llvm-22-dev,
  ninja-build,
  patchelf,
  zlib1g-dev,
@@ -29,9 +29,9 @@ Description: general-purpose programming language and toolchain
  cross-compiler: zig cc targets any supported triple from any host, bundling
  the libc headers it needs rather than requiring a sysroot per target.
  .
- This package carries the compiler and its standard library. LLVM is linked
- statically so the binary works on any of the archive's suites; the sources
- the compiler ships to build against live under /usr/lib/zig.
+ This package carries the compiler and its standard library. It uses Debian's
+ own LLVM and Clang libraries; the sources the compiler ships to build against
+ live under /usr/lib/zig.
  .
  The compiler is bootstrapped from stage1/zig1.wasm, a prebuilt WebAssembly
  seed committed by upstream that is not reproducible from source. It does not

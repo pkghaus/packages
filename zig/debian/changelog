@@ -1,3 +1,14 @@
+zig (0.17.0-1) unstable; urgency=medium
+
+  * New upstream release
+  * Build against LLVM 22, the only version 0.17.0 accepts.
+  * Link LLVM and Clang as shared libraries. Static linking was only needed
+    because trixie lacked LLVM 21's; LLVM 22 is in all three suites. The
+    package drops from 62 MB to 27 MB and Depends on libllvm22 and
+    libclang-cpp22.
+
+ -- pkg.haus archive <archive@pkg.haus>  Mon, 19 Oct 2026 10:58:32 +0200
+
 zig (0.16.0-3) unstable; urgency=medium
 
   * Stop the build host's kernel version reaching the compiler. Resolving a
