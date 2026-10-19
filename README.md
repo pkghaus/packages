@@ -105,7 +105,8 @@ Watch files are still owed for Debian policy; they are not this.
 Three kinds of package are left alone: one that is not in `packages.txt`, one
 whose `debian/source/format` is native (`pkghaus-archive-keyring` is its own
 upstream, so a tag lookup says nothing about it), and one whose upstream lookup
-fails, which is reported rather than treated as up to date.
+fails, which the dashboard lists rather than treating as up to date. Only
+GitHub is sent the workflow's token; Codeberg is asked anonymously.
 
 The bump also refuses, rather than guesses, three things: a tag that is not a
 plain version tag, a package carrying an epoch, and any move that is not
@@ -133,6 +134,10 @@ without being asked:
 - **A status per row.** `verification failed`, `not verified`,
   `verified, but landing failed`. One line for the whole run would not say
   which package it meant.
+- **Packages that were not checked.** A package whose upstream lookup failed,
+  or whose `package.conf` could not be read, is named with the reason. Without
+  it the issue would close saying every package is current while one was never
+  asked about.
 - **Packages the archive does not serve.** If a release build fails after the
   changelog has landed, `package.conf` still matches upstream, so the drift
   check calls the package current while users get the old version, and nothing
