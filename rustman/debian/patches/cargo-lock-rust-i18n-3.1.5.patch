@@ -7,7 +7,7 @@ Description: Ship Cargo.lock resolved with rust-i18n 3.1.5
  "cargo update -p rust-i18n --precise 3.1.5" produced; the first frees the
  toml_datetime pin that 3.1.5's toml cannot share.
 Author: pkg.haus archive <archive@pkg.haus>
-Forwarded: not-needed
+Forwarded: https://github.com/rust-man-org/rustman/pull/65
 Last-Update: 2026-10-20
 --- a/Cargo.lock
 +++ b/Cargo.lock
