@@ -1,3 +1,9 @@
+hl (0.36.4-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Tue, 20 Oct 2026 04:52:12 +0000
+
 hl (0.36.3-1) unstable; urgency=medium
 
   * Initial release.
