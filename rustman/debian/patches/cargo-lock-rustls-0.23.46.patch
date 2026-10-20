@@ -8,7 +8,7 @@ Description: Ship Cargo.lock with rustls 0.23.46
  RUSTSEC-2026-0204. This is the lock "cargo update -p rustls" then
  "cargo update -p crossbeam-epoch" produced on top of the previous patch.
 Author: pkg.haus archive <archive@pkg.haus>
-Forwarded: not-yet
+Forwarded: https://github.com/rust-man-org/rustman/pull/66
 Last-Update: 2026-10-20
 --- a/Cargo.lock
 +++ b/Cargo.lock
