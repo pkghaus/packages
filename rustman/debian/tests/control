@@ -1,0 +1,5 @@
+Tests: send-request
+# xvfb and xauth for a display (xauth is not a dependency of xvfb), xdotool to
+# type into the window, python3 for the local server and the history query.
+Depends: @, python3, xauth, xdotool, xvfb
+Restrictions: allow-stderr
