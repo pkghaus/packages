@@ -1,3 +1,9 @@
+xplr (1.2.1-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 23 Oct 2026 17:09:53 +0000
+
 xplr (1.1.2-2) unstable; urgency=medium
 
   * Rebuild against action-debian-build v1.10.0, which restores
