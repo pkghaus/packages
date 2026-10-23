@@ -1,1 +1,2 @@
 deoptimise-exr-for-reproducibility.patch
+skip-keyboard-enhancement-probe.patch

@@ -6,7 +6,7 @@
 # is opened. That yields two distinct, deterministic outcomes from two inputs,
 # with no pty and no timing:
 #
-#   a path that is not a directory   "<path> is not a directory"
+#   a path that does not exist       "<path> does not exist"
 #   a real vault directory           "this needs an interactive terminal"
 #
 # The second is the discriminating one. A binary that rejected every path would
@@ -58,13 +58,13 @@ run() {
 }
 
 run "absent" "$WORK/not-a-vault"
-grep -qi 'is not a directory' "$out" || {
+grep -qi 'does not exist' "$out" || {
     echo "a nonexistent vault path was not rejected as such" >&2; cat "$out" >&2; exit 1; }
 
 # The discriminating case. A real vault has to get PAST validation; with no
 # terminal it then fails, and that later failure is the evidence it was taken.
 run "vault" "$WORK/vault"
-if grep -qi 'is not a directory' "$out"; then
+if grep -qi 'does not exist' "$out"; then
     echo "a real vault directory was rejected as if it did not exist" >&2
     cat "$out" >&2
     exit 1
