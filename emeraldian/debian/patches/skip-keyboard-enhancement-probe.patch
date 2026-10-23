@@ -1,0 +1,27 @@
+Description: Skip the keyboard enhancement probe, which hangs startup inside tmux
+ 0.8.0 asks the terminal whether it speaks the Kitty keyboard protocol before
+ drawing its first frame. Inside tmux (3.5a, 3.7c and 3.8 measured) the process
+ then stays blocked in a read on the terminal and never draws; 0.7.0, which has
+ no probe, starts normally. Skipping the probe makes 0.8.0 draw again.
+ .
+ What it costs is the protocol itself, which upstream's comment says lets keys
+ like Ctrl+Tab and Ctrl+I arrive as themselves rather than as the plainer key a
+ legacy terminal sends. Drop this patch once upstream fixes the hang.
+Author: pkg.haus archive <archive@pkg.haus>
+Bug: https://github.com/iamrohithrnair/emeraldian/issues/47
+Forwarded: https://github.com/iamrohithrnair/emeraldian/issues/47
+Last-Update: 2026-10-23
+--- a/crates/emeraldian/src/main.rs
++++ b/crates/emeraldian/src/main.rs
+@@ -399,10 +399,7 @@
+     // `Ctrl+Tab` or `Ctrl+I` instead of the plainer key a legacy terminal
+     // sends in their place. Asked for only where it is understood, so other
+     // terminals see nothing new.
+-    let enhanced = matches!(
+-        crossterm::terminal::supports_keyboard_enhancement(),
+-        Ok(true)
+-    );
++    let enhanced = false;
+     if enhanced {
+         let _ = crossterm::execute!(
+             std::io::stdout(),

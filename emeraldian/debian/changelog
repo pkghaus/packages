@@ -1,3 +1,12 @@
+emeraldian (0.8.0-1) unstable; urgency=medium
+
+  * New upstream release
+  * Skip the Kitty keyboard protocol probe: 0.8.0 hangs before drawing
+    anything inside tmux. Reported upstream as emeraldian#47.
+  * cli-contract: a missing vault path now reports "does not exist".
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 23 Oct 2026 08:15:49 +0200
+
 emeraldian (0.6.0-2) unstable; urgency=medium
 
   * Build exr at opt-level 1, for reproducibility on arm64. LLVM compiles
