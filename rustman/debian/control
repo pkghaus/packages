@@ -1,0 +1,45 @@
+Source: rustman
+Section: web
+Priority: optional
+Maintainer: pkg.haus archive <archive@pkg.haus>
+Build-Depends:
+ ca-certificates,
+ debhelper-compat (= 13),
+ libsqlite3-dev,
+ libssl-dev,
+ pkgconf,
+ rustup,
+ zlib1g-dev,
+Rules-Requires-Root: no
+Standards-Version: 4.7.2.0
+Homepage: https://github.com/rust-man-org/rustman
+
+Package: rustman
+Architecture: any
+# winit dlopens the display libraries, so ${shlibs:Depends} cannot see them.
+Depends:
+ ca-certificates,
+ libwayland-client0,
+ libx11-6,
+ libx11-xcb1,
+ libxcursor1,
+ libxi6,
+ libxkbcommon-x11-0,
+ libxkbcommon0,
+ ${misc:Depends},
+ ${shlibs:Depends},
+Recommends:
+ git,
+ xdg-desktop-portal-gtk | xdg-desktop-portal-backend,
+ xdg-utils,
+Description: desktop API client for HTTP, WebSocket and GraphQL
+ Rustman sends HTTP, WebSocket and GraphQL requests and shows the responses,
+ in the manner of Postman, without an account or a cloud service. Requests
+ live in collections with environments, history, pre-request and test
+ scripts, and can be imported from curl, OpenAPI and Postman. A collection
+ directory can be a git repository, committed and pushed from the app; the
+ remote operations need git installed.
+ .
+ HTML responses are shown as readable text and can be opened in the web browser.
+ .
+ This build leaves out the in-app updater: apt delivers updates.
