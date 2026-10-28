@@ -1,3 +1,11 @@
+emeraldian (0.10.0-1) unstable; urgency=medium
+
+  * New upstream release
+  * Drop skip-keyboard-enhancement-probe.patch: upstream fixed the startup
+    hang inside tmux in 0.9.1 (emeraldian#47).
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 28 Oct 2026 06:43:00 +0100
+
 emeraldian (0.8.0-1) unstable; urgency=medium
 
   * New upstream release
