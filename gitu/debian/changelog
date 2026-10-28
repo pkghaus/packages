@@ -1,3 +1,9 @@
+gitu (0.44.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 28 Oct 2026 22:37:13 +0000
+
 gitu (0.43.0-1) unstable; urgency=medium
 
   * Initial release.
