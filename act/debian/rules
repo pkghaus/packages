@@ -1,6 +1,6 @@
 #!/usr/bin/make -f
 
-# DEB_VERSION_UPSTREAM, for the generated man page.
+# DEB_VERSION_UPSTREAM, for the version stamp and the generated man page.
 include /usr/share/dpkg/pkg-info.mk
 
 # act's go.mod asks for a newer Go than the suite ships; let the Go tool
@@ -13,8 +13,10 @@ export GOPATH := $(CURDIR)/.gopath
 %:
 	dh $@
 
+# Upstream stamps main.version via ldflags at release time and no longer bumps
+# its VERSION file, so an unstamped build reports the previous release.
 override_dh_auto_build:
-	go build -buildmode=pie -o act .
+	go build -buildmode=pie -ldflags "-X main.version=$(DEB_VERSION_UPSTREAM)" -o act .
 
 # Upstream's test suite runs workflows against a Docker daemon that the
 # build container does not have; function is covered by the packaging
