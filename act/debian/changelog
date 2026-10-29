@@ -1,3 +1,11 @@
+act (0.2.92-1) unstable; urgency=medium
+
+  * New upstream release
+  * Stamp the version at build time; upstream stopped bumping its VERSION
+    file, so an unstamped 0.2.92 reported itself as 0.2.91.
+
+ -- pkg.haus archive <archive@pkg.haus>  Thu, 29 Oct 2026 07:34:02 +0100
+
 act (0.2.89-2) unstable; urgency=medium
 
   * Publish this version's source package and build record at
