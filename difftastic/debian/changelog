@@ -1,3 +1,9 @@
+difftastic (0.72.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Thu, 29 Oct 2026 22:47:26 +0000
+
 difftastic (0.71.0-2) unstable; urgency=medium
 
   * Pin jemalloc's virtual address width to 48 bits. Its configure read the
