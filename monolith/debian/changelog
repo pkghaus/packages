@@ -1,3 +1,11 @@
+monolith (2.11.7-1) unstable; urgency=medium
+
+  * New upstream release
+  * DEP-8: decode inlined assets in either data URI encoding; 2.11.7 picks
+    the shorter of base64 and percent-encoding.
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 30 Oct 2026 07:18:00 +0100
+
 monolith (2.11.6-1) unstable; urgency=medium
 
   * New upstream release
