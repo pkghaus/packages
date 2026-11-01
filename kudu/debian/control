@@ -17,13 +17,13 @@ Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
- ca-certificates,
  passt,
  xorriso,
  ${kudu:Depends},
  qemu-utils,
  e2fsprogs,
 Recommends:
+ ca-certificates,
  ovmf,
  ${kudu:Recommends},
  qemu-efi-riscv64,

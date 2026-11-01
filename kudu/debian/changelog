@@ -1,5 +1,7 @@
 kudu (0.5.0-2) unstable; urgency=medium
 
+  * Recommend ca-certificates rather than depend on it: kudu starts without
+    it and needs it to download cloud images.
   * Offer qemu-system-riscv rather than qemu-system-misc as the third
     emulator: kudu runs qemu-system-riscv64, which qemu-system-misc does not
     ship.
