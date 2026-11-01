@@ -1,3 +1,19 @@
+kudu (0.5.0-2) unstable; urgency=medium
+
+  * Recommend ca-certificates rather than depend on it: kudu starts without
+    it and needs it to download cloud images.
+  * Offer qemu-system-riscv rather than qemu-system-misc as the third
+    emulator: kudu runs qemu-system-riscv64, which qemu-system-misc does not
+    ship.
+  * On arm64, prefer qemu-system-arm and depend on qemu-efi-aarch64: kudu
+    refuses to start with aarch64 as its only emulator and no aarch64
+    firmware.
+  * Recommend qemu-efi-riscv64, which kudu needs when riscv64 is its only
+    emulator.
+  * Suggest tigervnc-viewer and vde2.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 kudu (0.5.0-1) unstable; urgency=medium
 
   * New upstream release

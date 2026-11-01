@@ -1,3 +1,10 @@
+emeraldian (0.10.2-2) unstable; urgency=medium
+
+  * Suggest a clipboard tool. Text falls back to OSC 52 without one;
+    diagrams copy as images only through wl-copy or xclip.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 emeraldian (0.10.2-1) unstable; urgency=medium
 
   * New upstream release

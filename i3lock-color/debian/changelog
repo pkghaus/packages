@@ -1,3 +1,9 @@
+i3lock-color (2.13.c.5-6) unstable; urgency=medium
+
+  * Suggest picom, the compositor a translucent --color needs.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 i3lock-color (2.13.c.5-5) unstable; urgency=medium
 
   * Publish this version's source package and build record at

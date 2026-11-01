@@ -1,3 +1,11 @@
+vale (3.26.0-2) unstable; urgency=medium
+
+  * Recommend ca-certificates: vale sync failed to download packages.
+  * Suggest asciidoctor, python3-docutils and xsltproc, for AsciiDoc,
+    reStructuredText and XML.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 vale (3.26.0-1) unstable; urgency=medium
 
   * New upstream release

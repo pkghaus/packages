@@ -16,6 +16,8 @@ Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
+Recommends:
+ less,
 Description: log viewer for JSON and logfmt records
  hl reads structured logs -- JSON objects or logfmt lines, one record per line
  -- and renders them as readable columns, sorting by timestamp and colouring by

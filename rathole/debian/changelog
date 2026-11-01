@@ -1,3 +1,10 @@
+rathole (0.5.0-4) unstable; urgency=medium
+
+  * Suggest ca-certificates, for the TLS transport without a trusted_root,
+    and openssl, for creating the server's PKCS#12 identity.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 rathole (0.5.0-3) unstable; urgency=medium
 
   * Ship the time 0.3.36 Cargo.lock as a patch and build with --locked.

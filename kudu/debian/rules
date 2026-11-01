@@ -2,6 +2,18 @@
 
 # DEB_VERSION_UPSTREAM, for the generated man page.
 include /usr/share/dpkg/pkg-info.mk
+include /usr/share/dpkg/architecture.mk
+
+# apt installs the first alternative, so lead with the host's own emulator, the
+# one KVM can accelerate. With aarch64 as its only emulator kudu refuses to start
+# without aarch64 UEFI firmware, so on arm64 that firmware is a Depends.
+ifeq ($(DEB_HOST_ARCH),arm64)
+KUDU_DEPENDS := qemu-system-arm | qemu-system-x86 | qemu-system-riscv, qemu-efi-aarch64
+KUDU_RECOMMENDS :=
+else
+KUDU_DEPENDS := qemu-system-x86 | qemu-system-arm | qemu-system-riscv
+KUDU_RECOMMENDS := qemu-efi-aarch64
+endif
 
 # Rust's equivalent of Go's -trimpath. Without it the binary embeds the build
 # directory and a rebuild anywhere else produces different bytes.
@@ -34,6 +46,9 @@ override_dh_auto_build:
 
 override_dh_auto_install:
 	install -Dm0755 target/release/kudu debian/kudu/usr/bin/kudu
+
+override_dh_gencontrol:
+	dh_gencontrol -- -Vkudu:Depends='$(KUDU_DEPENDS)' -Vkudu:Recommends='$(KUDU_RECOMMENDS)'
 
 # Upstream ships no man page, so one is generated from the program's own --help
 # rather than written here. That invents nothing, and a renamed option changes

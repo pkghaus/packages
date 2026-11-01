@@ -1,3 +1,10 @@
+i3-autodisplay (0.6-5) unstable; urgency=medium
+
+  * Recommend i3-wm: i3-autodisplay asks the i3 binary for its socket and
+    exits without it.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 i3-autodisplay (0.6-4) unstable; urgency=medium
 
   * Trim the build path out of the binary.

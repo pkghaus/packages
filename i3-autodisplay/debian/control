@@ -16,6 +16,8 @@ Depends:
  ${misc:Depends},
  ${shlibs:Depends},
  x11-xserver-utils,
+Recommends:
+ i3-wm,
 Description: display auto-configuration for i3wm
  i3-autodisplay watches for monitor connect and disconnect events and
  applies the configured xrandr layout, keeping i3 workspaces on their

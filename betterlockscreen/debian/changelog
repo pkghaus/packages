@@ -1,3 +1,9 @@
+betterlockscreen (4.4.0-3) unstable; urgency=medium
+
+  * Depend on i3lock-color 2.13.c.3 or later, as upstream requires.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 betterlockscreen (4.4.0-2) unstable; urgency=medium
 
   * Publish this version's source package and build record at

@@ -17,6 +17,10 @@ Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
+Recommends:
+ ca-certificates,
+Suggests:
+ xdg-utils,
 Description: markup-based typesetting system
  Typst compiles marked-up text documents to PDF, SVG or PNG. Common
  formatting is concise markup; everything beyond it is scriptable in

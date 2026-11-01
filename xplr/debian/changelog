@@ -1,3 +1,10 @@
+xplr (1.2.2-2) unstable; urgency=medium
+
+  * Recommend less, xplr's default pager.
+  * Suggest xdg-utils, for opening files in a GUI application.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 xplr (1.2.2-1) unstable; urgency=medium
 
   * New upstream release

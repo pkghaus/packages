@@ -30,6 +30,7 @@ Package: i3lock-color
 Architecture: any
 Section: x11
 Depends: ${shlibs:Depends}, ${misc:Depends}
+Suggests: picom
 Provides: i3lock
 Conflicts: i3lock
 Replaces: i3lock

@@ -1,3 +1,9 @@
+vegeta (12.13.0-5) unstable; urgency=medium
+
+  * Recommend ca-certificates: every HTTPS target failed verification.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 vegeta (12.13.0-4) unstable; urgency=medium
 
   * Report the upstream commit again. It was read with git rev-parse, which

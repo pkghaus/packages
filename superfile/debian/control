@@ -15,6 +15,17 @@ Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
+Recommends:
+ xdg-utils,
+Suggests:
+ bat,
+ ca-certificates,
+ ffmpeg,
+ ghostscript,
+ libimage-exiftool-perl,
+ poppler-utils,
+ zoxide,
+ wl-clipboard | xclip | xsel,
 Description: modern terminal file manager
  superfile (the spf binary) is a full-screen terminal file manager
  with panels, tabs, file previews and built-in operations (copy,

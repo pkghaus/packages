@@ -16,6 +16,8 @@ Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
+Recommends:
+ iw,
 Description: terminal network scanner and diagnostic tool
  netscanner is a terminal interface for surveying the network a machine is
  attached to: it sweeps a CIDR range for live hosts, resolves their vendor

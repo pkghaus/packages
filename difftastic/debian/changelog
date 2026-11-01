@@ -1,3 +1,9 @@
+difftastic (0.72.0-2) unstable; urgency=medium
+
+  * Suggest git, which difftastic asks for .gitattributes diff settings.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 difftastic (0.72.0-1) unstable; urgency=medium
 
   * New upstream release
