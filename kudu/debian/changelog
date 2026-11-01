@@ -1,3 +1,13 @@
+kudu (0.5.0-1) unstable; urgency=medium
+
+  * New upstream release
+  * Depend on qemu-utils, for qemu-img: kudu has always used it for disk
+    images and refuses to start without it from 0.5.0.
+  * Depend on e2fsprogs, for chattr on a btrfs data directory, and
+    recommend xz-utils, for FreeBSD guest images.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 04:20:20 +0100
+
 kudu (0.4.2-1) unstable; urgency=medium
 
   * New upstream release
