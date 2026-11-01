@@ -1,3 +1,9 @@
+kudu (0.6.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 22:04:42 +0000
+
 kudu (0.5.0-2) unstable; urgency=medium
 
   * Recommend ca-certificates rather than depend on it: kudu starts without
