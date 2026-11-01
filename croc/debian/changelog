@@ -1,3 +1,9 @@
+croc (11.6.2-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 22:04:09 +0000
+
 croc (11.6.0-2) unstable; urgency=medium
 
   * Recommend ca-certificates: croc store and the update check use HTTPS.
