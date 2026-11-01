@@ -1,3 +1,10 @@
+frp (0.71.1-2) unstable; urgency=medium
+
+  * Suggest ca-certificates, for OIDC authentication without a
+    trustedCaFile.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 frp (0.71.1-1) unstable; urgency=medium
 
   * New upstream release

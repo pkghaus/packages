@@ -1,3 +1,9 @@
+netscanner (0.6.43-2) unstable; urgency=medium
+
+  * Recommend iw. Without it the Wi-Fi panel stays empty.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 netscanner (0.6.43-1) unstable; urgency=medium
 
   * Initial release.

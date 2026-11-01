@@ -15,7 +15,8 @@ Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
-Recommends: docker.io
+Recommends: ca-certificates, docker.io
+Suggests: gh
 Description: run GitHub Actions workflows locally
  act reads the workflows under .github/workflows/ and runs their jobs in
  containers on the local machine, so a workflow can be iterated on

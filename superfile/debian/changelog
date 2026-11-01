@@ -1,3 +1,13 @@
+superfile (1.6.0-3) unstable; urgency=medium
+
+  * Recommend xdg-utils, for opening files.
+  * Suggest ca-certificates, for the update check, and the tools previews,
+    the metadata and zoxide plugins and the clipboard use: bat, ffmpeg,
+    ghostscript, libimage-exiftool-perl, poppler-utils, zoxide, and
+    wl-clipboard or xclip or xsel.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 superfile (1.6.0-2) unstable; urgency=medium
 
   * Publish this version's source package and build record at

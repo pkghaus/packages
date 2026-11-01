@@ -16,6 +16,10 @@ Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
+Recommends:
+ less,
+Suggests:
+ xdg-utils,
 Description: hackable, minimal, fast TUI file explorer
  xplr browses the filesystem from a terminal interface, and is built to be
  wired into other tools: every action can be scripted in Lua, and it prints

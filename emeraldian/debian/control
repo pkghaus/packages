@@ -16,6 +16,8 @@ Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
+Suggests:
+ wl-clipboard | xclip | xsel,
 Description: terminal UI for an Obsidian vault
  emeraldian browses a directory of Markdown notes the way Obsidian does. It
  lists the vault, live-previews a note, resolves [[wikilinks]] into backlinks

@@ -1,3 +1,11 @@
+i3status-rust (0.36.2-2) unstable; urgency=medium
+
+  * Suggest what individual blocks use: alsa-utils, bluez, btrfs-progs,
+    ca-certificates, dunst, gammastep or redshift or wlsunset, kdeconnect,
+    taskwarrior, upower, x11-xserver-utils and xdg-utils.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 i3status-rust (0.36.2-1) unstable; urgency=medium
 
   * New upstream release

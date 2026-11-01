@@ -20,13 +20,17 @@ Depends:
  ca-certificates,
  passt,
  xorriso,
- qemu-system-x86 | qemu-system-arm | qemu-system-misc,
+ ${kudu:Depends},
  qemu-utils,
  e2fsprogs,
 Recommends:
  ovmf,
- qemu-efi-aarch64,
+ ${kudu:Recommends},
+ qemu-efi-riscv64,
  xz-utils,
+Suggests:
+ tigervnc-viewer,
+ vde2,
 Description: terminal VM manager for QEMU without libvirt
  kudu creates and manages QEMU virtual machines from a terminal
  interface, as an alternative to virt-manager or GNOME Boxes. It

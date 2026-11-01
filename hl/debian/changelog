@@ -1,3 +1,9 @@
+hl (0.36.5-2) unstable; urgency=medium
+
+  * Recommend less, the pager hl uses by default.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 hl (0.36.5-1) unstable; urgency=medium
 
   * New upstream release

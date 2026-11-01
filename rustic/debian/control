@@ -16,6 +16,11 @@ Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
+Recommends:
+ ca-certificates,
+Suggests:
+ rclone,
+ xdg-utils,
 Description: fast, encrypted, deduplicated backups
  rustic backs up to restic-compatible repositories: content-defined
  chunking, encryption, deduplication and snapshots, with cold-storage

@@ -23,6 +23,18 @@ Depends:
  ${misc:Depends},
  ${shlibs:Depends},
 Recommends: fonts-font-awesome
+Suggests:
+ alsa-utils,
+ bluez,
+ btrfs-progs,
+ ca-certificates,
+ dunst,
+ gammastep | redshift | wlsunset,
+ kdeconnect,
+ taskwarrior,
+ upower,
+ x11-xserver-utils,
+ xdg-utils,
 Description: resource-friendly status bar generator for i3 and sway
  i3status-rust feeds a status line to i3bar or swaybar: it emits a stream of
  JSON blocks on standard output, one update per block per interval, and the

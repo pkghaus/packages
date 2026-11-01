@@ -1,3 +1,10 @@
+actionlint (1.7.12-4) unstable; urgency=medium
+
+  * Recommend shellcheck, which actionlint runs on run: scripts when
+    installed.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 actionlint (1.7.12-3) unstable; urgency=medium
 
   * Publish this version's source package and build record at

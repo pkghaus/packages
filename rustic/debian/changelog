@@ -1,3 +1,11 @@
+rustic (0.11.4-3) unstable; urgency=medium
+
+  * Recommend ca-certificates: every remote backend failed with "No CA
+    certificates were loaded from the system".
+  * Suggest rclone, for the rclone backend, and xdg-utils, for rustic docs.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 rustic (0.11.4-2) unstable; urgency=medium
 
   * Build reproducibly: identical bytes across build path, hostname, locale,

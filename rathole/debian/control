@@ -18,6 +18,9 @@ Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
+Suggests:
+ ca-certificates,
+ openssl,
 Description: lightweight and stable reverse tunnel for NAT traversal
  rathole exposes services running behind NAT or firewalls through a
  server with a public IP, with one binary acting as client or server.

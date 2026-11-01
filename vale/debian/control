@@ -15,6 +15,12 @@ Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
+Recommends:
+ ca-certificates,
+Suggests:
+ asciidoctor,
+ python3-docutils,
+ xsltproc,
 Description: syntax-aware linter for prose
  vale lints prose in Markdown, reStructuredText, AsciiDoc, HTML and
  source-code comments against configurable style rules. Editorial

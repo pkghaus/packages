@@ -1,3 +1,10 @@
+act (0.2.94-2) unstable; urgency=medium
+
+  * Recommend ca-certificates: act fetches remote actions over HTTPS.
+  * Suggest gh, which act asks for a GITHUB_TOKEN when none is given.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 act (0.2.94-1) unstable; urgency=medium
 
   * New upstream release

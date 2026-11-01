@@ -1,3 +1,9 @@
+fx (40.0.1-2) unstable; urgency=medium
+
+  * Suggest a clipboard tool, used when the terminal lacks OSC 52.
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 01 Nov 2026 05:04:47 +0100
+
 fx (40.0.1-1) unstable; urgency=medium
 
   * New upstream release

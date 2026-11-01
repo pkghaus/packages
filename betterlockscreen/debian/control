@@ -13,7 +13,7 @@ Architecture: all
 Depends:
  bc,
  fontconfig,
- i3lock-color,
+ i3lock-color (>= 2.13.c.3),
  imagemagick,
  procps,
  x11-utils,

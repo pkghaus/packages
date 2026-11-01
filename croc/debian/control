@@ -15,6 +15,10 @@ Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
+Recommends:
+ ca-certificates,
+Suggests:
+ wl-clipboard | xclip | xsel,
 Description: securely send files and folders between computers
  croc transfers files and folders between any two machines through a
  relay, end-to-end encrypted via a password-authenticated key exchange:
