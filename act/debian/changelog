@@ -1,3 +1,9 @@
+act (0.2.95-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Tue, 03 Nov 2026 14:12:02 +0000
+
 act (0.2.94-2) unstable; urgency=medium
 
   * Recommend ca-certificates: act fetches remote actions over HTTPS.
