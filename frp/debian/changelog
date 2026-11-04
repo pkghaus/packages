@@ -1,3 +1,9 @@
+frp (0.72.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Wed, 04 Nov 2026 23:42:12 +0000
+
 frp (0.71.1-2) unstable; urgency=medium
 
   * Suggest ca-certificates, for OIDC authentication without a
