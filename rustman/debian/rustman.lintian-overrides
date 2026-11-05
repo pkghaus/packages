@@ -1,0 +1,8 @@
+# A GUI with no command-line interface: main() reads no arguments, so there is
+# no --help to generate a page from, and upstream ships none. Every other
+# package here generates one from --help.
+rustman: no-manual-page
+# Rust links its vendored C dependencies statically by design. Here it is the
+# YAML parser behind OpenAPI import (unsafe-libyaml, libyaml translated to
+# Rust), built inside the crate tree rather than linked from the archive.
+rustman: embedded-library

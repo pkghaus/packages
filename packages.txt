@@ -37,6 +37,7 @@ pkghaus-archive-keyring
 rainfrog
 rathole
 rustic
+rustman
 superfile
 tincan
 typst
