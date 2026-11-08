@@ -1,3 +1,9 @@
+i3status-rust (0.40.1-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Sun, 08 Nov 2026 13:27:06 +0000
+
 i3status-rust (0.40.0-1) unstable; urgency=medium
 
   * New upstream release
