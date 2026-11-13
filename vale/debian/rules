@@ -2,13 +2,15 @@
 
 include /usr/share/dpkg/pkg-info.mk
 
-# vale's go.mod asks for a newer Go than the suite ships (1.25.7 against
+# vale's go.mod asks for a newer Go than the suite ships (1.27.3 against
 # trixie's 1.24), so the Go tool has to fetch one. Pinned to an exact version
 # rather than `auto`: `auto` builds with whatever go.mod happens to request on
 # the day, and the .buildinfo records only the Debian golang-go that was
 # installed, so nothing anywhere names the compiler that actually ran. This
 # line is that name, and it ships in the source package.
-export GOTOOLCHAIN := go1.25.7
+# Move it to go.mod's `go` line when upstream raises it: the automated bump
+# can't, and fails verification until someone does.
+export GOTOOLCHAIN := go1.27.3
 export GOFLAGS := -trimpath
 export GOCACHE := $(CURDIR)/.gocache
 export GOPATH := $(CURDIR)/.gopath

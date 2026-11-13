@@ -1,3 +1,10 @@
+vale (3.27.0-1) unstable; urgency=medium
+
+  * New upstream release
+  * Build with Go 1.27.3, the minimum the new go.mod requires.
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 13 Nov 2026 08:23:32 +0100
+
 vale (3.26.0-2) unstable; urgency=medium
 
   * Recommend ca-certificates: vale sync failed to download packages.
