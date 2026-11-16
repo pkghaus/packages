@@ -7,42 +7,50 @@ export RUSTFLAGS := --remap-path-prefix=$(CURDIR)=.
 export CARGO_HOME := $(CURDIR)/.cargo
 
 # Upstream builds with whatever stable is current and ships no
-# rust-toolchain.toml. Floor: edition 2024 (1.85).
+# rust-toolchain.toml. Floor: 1.89, for File::try_lock.
 export RUSTUP_TOOLCHAIN := 1.98.1
 
-# Debian's OpenSSL and SQLite rather than the copies git2 and rusqlite vendor.
-# libgit2 stays vendored: libgit2-sys wants >= 1.9.4 and trixie has 1.9.0.
-# Nothing links OpenSSL today (remotes go through the git binary), so only
-# SQLite is asserted below.
+# Debian's OpenSSL, SQLite and zstd rather than the copies git2, rusqlite and
+# zstd-sys vendor. libgit2 stays vendored: libgit2-sys wants >= 1.9.4 and
+# trixie has 1.9.0. Nothing links OpenSSL today (remotes go through the git
+# binary), so only SQLite and zstd are asserted below.
 export OPENSSL_NO_VENDOR := 1
 export LIBSQLITE3_SYS_USE_PKG_CONFIG := 1
+export ZSTD_SYS_USE_PKG_CONFIG := 1
 
 BIN := target/release/rustman
 APP_ID := io.github.animeshchaudhri.rustman
+MEMBERS := $(foreach f,$(wildcard crates/*/Cargo.toml),$(shell sed -n 's/^name = "\(.*\)"/\1/p;T;q' $(f)))
+# Debian spells upstream's pre-release hyphen as '~'; Cargo takes the hyphen.
+CARGO_VERSION := $(subst ~,-,$(DEB_VERSION_UPSTREAM))
 
 %:
 	dh $@
 
-# Upstream's release job seds the tag's version into Cargo.toml, so its binary
-# reports X.Y.Z-dev.N where the tree says X.Y.Z. Stamp the same way, and
-# stamp Cargo.lock's own entry so --locked still pins every dependency.
+# Upstream's release job seds the tag's version into both version lines of
+# Cargo.toml, so the app and its workspace crates (the User-Agent comes from
+# rustman-http) report X.Y.Z-dev.N where the tree says X.Y.Z. Stamp the same
+# way, and stamp their Cargo.lock entries so --locked still pins the rest.
 execute_before_dh_auto_build:
 	[ -f debian/Cargo.toml.upstream ] || cp Cargo.toml debian/Cargo.toml.upstream
 	[ -f debian/Cargo.lock.upstream ] || cp Cargo.lock debian/Cargo.lock.upstream
-	test -n '$(DEB_VERSION_UPSTREAM)'
-	sed -i '0,/^version = /s/^version = ".*"/version = "$(DEB_VERSION_UPSTREAM)"/' Cargo.toml
-	sed -i '/^name = "rustman"$$/{n;s/^version = .*/version = "$(DEB_VERSION_UPSTREAM)"/}' Cargo.lock
-	grep -qx 'version = "$(DEB_VERSION_UPSTREAM)"' Cargo.toml
-	grep -A1 -x 'name = "rustman"' Cargo.lock | grep -qx 'version = "$(DEB_VERSION_UPSTREAM)"'
+	test -n '$(CARGO_VERSION)'
+	test -n '$(MEMBERS)'
+	sed -i 's/^version = ".*"/version = "$(CARGO_VERSION)"/' Cargo.toml
+	test "$$(grep -cx 'version = "$(CARGO_VERSION)"' Cargo.toml)" = 2
+	for c in rustman $(MEMBERS); do \
+	    sed -i "/^name = \"$$c\"$$/{n;s/^version = .*/version = \"$(CARGO_VERSION)\"/}" Cargo.lock; \
+	    grep -A1 -x "name = \"$$c\"" Cargo.lock | grep -qx 'version = "$(CARGO_VERSION)"' \
+	        || { echo "FATAL: Cargo.lock has no stamped entry for $$c" >&2; exit 1; }; \
+	done
 
 # --no-default-features is upstream's own distro build: it compiles out the
 # in-app updater, so nothing in the binary can replace /usr/bin/rustman.
-# Cargo.lock comes patched from debian/patches; --locked fails rather than
-# let crates.io decide what a rebuild links.
+# --locked fails rather than let crates.io decide what a rebuild links.
 override_dh_auto_build:
 	cargo build --release --locked --no-default-features
 	# A -sys crate that misses pkg-config falls back to its bundled copy silently.
-	for lib in libsqlite3.so.0 libz.so.1; do \
+	for lib in libsqlite3.so.0 libz.so.1 libzstd.so.1; do \
 	    readelf -d $(BIN) | grep -qF "Shared library: [$$lib]" \
 	        || { echo "FATAL: $(BIN) does not link $$lib" >&2; exit 1; }; \
 	done

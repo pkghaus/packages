@@ -62,11 +62,13 @@ if [ -z "$win" ]; then
 fi
 
 # There is no window manager, so focus is set by hand. The window can map
-# before its widgets take input, so the whole entry is retried.
+# before its widgets take input, so the whole entry is retried. Ctrl+L opens
+# a request and focuses its URL bar; the start screen has no field to click.
 sent=
 for _ in 1 2 3 4 5; do
     xdotool windowfocus --sync "$win"
-    xdotool mousemove --window "$win" 700 65 click 1    # the URL field
+    xdotool key ctrl+l
+    sleep 0.5
     xdotool key ctrl+a
     xdotool type --delay 10 "$url"
     xdotool key ctrl+Return

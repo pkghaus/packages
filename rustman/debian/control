@@ -7,6 +7,7 @@ Build-Depends:
  debhelper-compat (= 13),
  libsqlite3-dev,
  libssl-dev,
+ libzstd-dev,
  pkgconf,
  rustup,
  zlib1g-dev,
@@ -28,8 +29,10 @@ Depends:
  libxkbcommon0,
  ${misc:Depends},
  ${shlibs:Depends},
+# wgpu dlopens libvulkan.so.1; without it iced's CPU renderer dims dialogs.
 Recommends:
  git,
+ libvulkan1,
  xdg-desktop-portal-gtk | xdg-desktop-portal-backend,
  xdg-utils,
 Description: desktop API client for HTTP, WebSocket and GraphQL
