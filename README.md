@@ -39,7 +39,9 @@ Landing releases. Any commit on `master` that changes a package's
 `debian/changelog` releases it: the package is built and DEP-8 tested for every
 suite and architecture, tagged `<package>/vX.Y.Z-N` at that commit, and the
 archive is told to ingest. That is true of a bump the automation lands
-unattended and of a change you push yourself.
+unattended and of a change you push yourself. git refuses `~` in a ref, so a
+version carrying one is tagged with `_` in its place: `X.Y.Z~rc.1-N` is
+`<package>/vX.Y.Z_rc.1-N`.
 
 The build that gates the tag runs once per tree. A bump's own verification
 already ran it, so the release it dispatches skips the build. A merged pull
@@ -84,7 +86,10 @@ the package from the archive, which is a separate deliberate act.
 A scheduled workflow checks every enrolled package against its upstream every
 six hours, and lands a commit on `master` for each one that has fallen behind.
 That commit rewrites `package.conf`'s `VERSION` and adds a `debian/changelog`
-entry, and nothing else.
+entry, and nothing else. `VERSION` takes upstream's tag verbatim; the changelog
+takes it without its prefix, and with its first hyphen, which starts a SemVer
+pre-release, written as `~` so it sorts below the release it precedes:
+`v1.2.3-rc.1` becomes `1.2.3~rc.1-1`.
 
 **Every upstream tag is tracked.** There is no staleness threshold and no
 filtering: a different tag string from the one in `package.conf` is the whole
@@ -108,10 +113,11 @@ upstream, so a tag lookup says nothing about it), and one whose upstream lookup
 fails, which the dashboard lists rather than treating as up to date. Only
 GitHub is sent the workflow's token; Codeberg is asked anonymously.
 
-The bump also refuses, rather than guesses, three things: a tag that is not a
-plain version tag, a package carrying an epoch, and any move that is not
-strictly forward. A downgrade is the one mistake here a reviewer skimming a
-two-line diff would not catch.
+The bump also refuses, rather than guesses, four things: a tag that is not a
+plain version tag, a package carrying an epoch, an upstream version containing
+`~haus` or `~testing` (the archive finds a build's suite by those), and any
+move that is not strictly forward. A downgrade is the one mistake here a
+reviewer skimming a two-line diff would not catch.
 
 ### Nothing approves a bump
 

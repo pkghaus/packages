@@ -301,8 +301,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          TAG: ${{ matrix.entry.package }}/v${{ steps.bump.outputs.version }}
-        run: scripts/await-tag.sh "$TAG"
+          PKG: ${{ matrix.entry.package }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        # The tag plan-release.sh creates, spelled by the same function.
+        run: |
+          . scripts/lib.sh
+          scripts/await-tag.sh "$(release_tag "$PKG" "$VERSION")"
 
   report:
     name: Drift dashboard

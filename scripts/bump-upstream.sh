@@ -28,8 +28,12 @@ bump_die() { printf 'bump: %s\n' "$1" >&2; exit 4; }
 # 2.13.c.5 are already bare. Stripping the leading run of non-digits covers
 # every scheme in the fleet without a per-package table, because every one of
 # them prefixes rather than infixes.
+#
+# The first hyphen after that is read as SemVer's pre-release separator
+# (rustman's v0.4.0-dev.52) and spelled '~', so it sorts below the release.
 upstream_version() {
-    printf '%s\n' "${1#"${1%%[0-9]*}"}"
+    local v="${1#"${1%%[0-9]*}"}"
+    printf '%s\n' "${v/-/\~}"
 }
 
 # Source name and full version from the changelog's first line, which is the
@@ -56,6 +60,11 @@ bump() {
     local new_upstream head source current current_upstream
     new_upstream="$(upstream_version "$tag")"
     [ -n "$new_upstream" ] || bump_die "tag [$tag] yields no version"
+    # The ingest, the Worker and the rebuilder find a build's suite by searching
+    # its version for these qualifiers, so an upstream carrying one is misfiled.
+    case "$new_upstream" in
+        *~haus*|*~testing*) bump_die "$new_upstream would read as a suite qualifier" ;;
+    esac
 
     head="$(changelog_head "$dir")"
     source="${head%% *}"

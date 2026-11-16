@@ -20,6 +20,12 @@ changelog_version() { # dir
     sed -n '1s/^[^ ]* (\([^)]*\)).*/\1/p' "$1/debian/changelog"
 }
 
+# A package's release tag. git refuses '~' in a ref, so it is spelled '_' as in
+# DEP-14; no Debian version contains '_', so the mapping reverses.
+release_tag() { # pkg version
+    printf '%s/v%s\n' "$1" "${2//\~/_}"
+}
+
 # A native package is its own upstream: its version tracks the signing key, not
 # a release feed, so a tag lookup says nothing about it.
 is_native() { # dir
