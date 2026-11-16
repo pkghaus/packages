@@ -27,7 +27,7 @@ fail=0
 # The count goes through a file because a variable incremented in a subshell
 # never reaches this scope; traps reset in subshells, so the cleanup fires once.
 # Update the number deliberately: that edit is someone noticing it moved.
-EXPECTED_ASSERTIONS=222
+EXPECTED_ASSERTIONS=235
 TALLY="$(mktemp)"
 trap 'rm -f "$TALLY"' EXIT
 
@@ -50,6 +50,9 @@ echo "upstream bump"
     eq "a leading v is stripped"               "1.0.5.2"   "$(upstream_version v1.0.5.2)"
     eq "a workspace prefix is stripped"        "0.24.2"    "$(upstream_version lychee-v0.24.2)"
     eq "a date-shaped version survives"        "2026.08.15" "$(upstream_version v2026.08.15)"
+    eq "a SemVer pre-release takes a tilde"    "0.4.0~dev.52" "$(upstream_version v0.4.0-dev.52)"
+    eq "only its first hyphen, which starts it" "1.0.0~alpha-1" "$(upstream_version v1.0.0-alpha-1)"
+    eq "and the tilde survives a decoy HOME"   "0.4.0~dev.52" "$(HOME=/decoy upstream_version v0.4.0-dev.52)"
 
     work="$(mktemp -d)"
     make_pkg() { # dir source version format
@@ -140,6 +143,29 @@ echo "upstream bump"
     eq "a downgrade is refused" "4" "$?"
     eq "a refused bump leaves package.conf untouched" \
        "VERSION=v5.0.0" "$(grep '^VERSION=' "$work/d/package.conf")"
+
+    # A pre-release upstream: package.conf keeps upstream's hyphen, the
+    # changelog Debian's tilde. Both sides of the plain release are covered,
+    # because that is where the two spellings sort differently.
+    make_pre() { # dir tag debian-upstream
+        make_pkg "$1" pre 0 "3.0 (quilt)"
+        printf 'UPSTREAM=https://github.com/x/y.git\nVERSION=%s\n' "$2" > "$1/package.conf"
+        sed -i "1s/(0-1)/($3-1)/" "$1/debian/changelog"
+    }
+    make_pre "$work/p1" v0.4.0-dev.51 0.4.0~dev.51
+    eq "a pre-release bumps to the next pre-release" \
+       "pre 0.4.0~dev.51-1 -> 0.4.0~dev.52-1" "$( ( bump "$work/p1" v0.4.0-dev.52 ) 2>/dev/null )"
+    eq "  and package.conf takes upstream's tag verbatim" \
+       "VERSION=v0.4.0-dev.52" "$(grep '^VERSION=' "$work/p1/package.conf")"
+    make_pre "$work/p2" v0.4.0-dev.52 0.4.0~dev.52
+    eq "the release a pre-release precedes is an upgrade" \
+       "pre 0.4.0~dev.52-1 -> 0.4.0-1" "$( ( bump "$work/p2" v0.4.0 ) 2>/dev/null )"
+    make_pre "$work/p3" v0.4.0-dev.52 0.4.0~dev.52
+    ( bump "$work/p3" v0.4.0-dev.52 >/dev/null 2>&1 )
+    eq "an unchanged pre-release reports nothing to do" "3" "$?"
+    make_pkg "$work/p4" pre 0.4.0 "3.0 (quilt)"
+    ( bump "$work/p4" v0.4.0-dev.53 >/dev/null 2>&1 )
+    eq "a pre-release after its own release is refused" "4" "$?"
 
     rm -rf "$work"
     exit $((fail > 0))
@@ -995,6 +1021,16 @@ echo "release plan"
            "$(printf '%s' "$out" | grep -c "refok/v$good")"
     done
 
+    # git refuses '~' in a ref; the version keeps it, the tag spells it '_'.
+    mk pre 0.4.0~dev.52-1
+    eq "a pre-release plans under a tag git accepts" \
+       '[{"package":"pre","version":"0.4.0~dev.52-1","tag":"pre/v0.4.0_dev.52-1"}]' \
+       "$(for_paths pre/debian/changelog)"
+    tagged="pre/v0.4.0_dev.52-1"
+    eq "  and its tag is the idempotency key like any other" "[]" \
+       "$(for_paths pre/debian/changelog)"
+    tagged=""
+
     exit $((fail > 0))
 ) || fail=$((fail + 1))
 
@@ -1276,13 +1312,18 @@ echo "the tag the bump waits for is the tag the release creates"
     version="${line##* }"
     eq "the bump reports the new Debian version" "0.8.3-1" "$version"
 
-    # bump.yml composes that tag as a workflow expression, which no unit test
-    # can execute, so assert its SHAPE while $ROOT still points at the repo.
-    # Without this the two scripts can agree perfectly while the workflow
-    # between them waits for a tag nobody creates.
-    eq "bump.yml composes the tag from the package and the bumped version" "1" \
-       "$(grep -c 'TAG: ${{ matrix.entry.package }}/v${{ steps.bump.outputs.version }}' \
+    # bump.yml spells the tag it waits for with release_tag, in a run step no
+    # unit test can execute, so assert that call while $ROOT still points at
+    # the repo. Without this the two scripts can agree perfectly while the
+    # workflow between them waits for a tag nobody creates.
+    eq "bump.yml waits for release_tag of the package and the bumped version" "1" \
+       "$(grep -c 'scripts/await-tag.sh "$(release_tag "$PKG" "$VERSION")"' \
           "$ROOT/.github/workflows/bump.yml")"
+    step="$(awk '/- name: Confirm the release was tagged/ {p = 1; next}
+                 p && (/^      - (name|uses): / || /^  [a-z]/) {exit} p' \
+            "$ROOT/.github/workflows/bump.yml")"
+    eq "  with PKG and VERSION from the matrix and the bump, in that step" "2" \
+       "$(printf '%s\n' "$step" | grep -cE '^ +(PKG: \$\{\{ matrix\.entry\.package \}\}|VERSION: \$\{\{ steps\.bump\.outputs\.version \}\})$')"
 
     # Exactly what the land job then hands to await-tag.sh, against exactly
     # what release.yml will create for the same tree.
@@ -1290,7 +1331,21 @@ echo "the tag the bump waits for is the tag the release creates"
     tag_exists() { return 1; }
     created="$(printf 'ouch/debian/changelog\n' | plan \
         | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["tag"])')"
-    eq "and the release creates the tag the bump waits for" "$created" "ouch/v$version"
+    eq "and the release creates the tag the bump waits for" "$created" "$(release_tag ouch "$version")"
+
+    # The same coupling for a pre-release, where the tag is not the version.
+    mkdir -p "$work/pre/debian/source"
+    printf '3.0 (quilt)\n' > "$work/pre/debian/source/format"
+    printf 'UPSTREAM=https://github.com/x/pre.git\nVERSION=v0.4.0-dev.51\n' > "$work/pre/package.conf"
+    printf 'pre (0.4.0~dev.51-1) unstable; urgency=medium\n\n  * Previous\n\n -- pkg.haus archive <archive@pkg.haus>  Mon, 01 Jan 2001 00:00:00 +0000\n' \
+        > "$work/pre/debian/changelog"
+    line="$(bump "$work/pre" v0.4.0-dev.52 | grep ' -> ' | tail -1)"
+    version="${line##* }"
+    created="$(printf 'pre/debian/changelog\n' | plan \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["tag"])')"
+    eq "a pre-release's bump waits for the tag its release creates" \
+       "pre/v0.4.0_dev.52-1" "$(release_tag pre "$version")"
+    eq "  which is that tag" "$created" "$(release_tag pre "$version")"
 
     exit $((fail > 0))
 ) || fail=$((fail + 1))

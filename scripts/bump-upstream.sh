@@ -28,8 +28,12 @@ bump_die() { printf 'bump: %s\n' "$1" >&2; exit 4; }
 # 2.13.c.5 are already bare. Stripping the leading run of non-digits covers
 # every scheme in the fleet without a per-package table, because every one of
 # them prefixes rather than infixes.
+#
+# A hyphen after that starts a SemVer pre-release (rustman's v0.4.0-dev.52),
+# which Debian spells with '~' so it sorts below the release it precedes.
 upstream_version() {
-    printf '%s\n' "${1#"${1%%[0-9]*}"}"
+    local v="${1#"${1%%[0-9]*}"}"
+    printf '%s\n' "${v/-/\~}"
 }
 
 # Source name and full version from the changelog's first line, which is the

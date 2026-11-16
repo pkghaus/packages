@@ -51,13 +51,13 @@ plan() {
         version="$(changelog_version "$ROOT/$pkg")"
         [ -n "$version" ] || plan_die "cannot parse $pkg/debian/changelog"
 
-        tag="$pkg/v$version"
+        tag="$(release_tag "$pkg" "$version")"
 
-        # Asked of git rather than enumerated here. An epoch's colon and a
-        # tilde are the cases that actually turn up, but the full rule is
-        # git's, and a hand-written character class kept missing parts of it:
-        # `*[:~^ ]*|*..*` accepted a version ending in `.lock` or in a bare
-        # dot, both of which git refuses. Absurd for a Debian version, and
+        # Asked of git rather than enumerated here. An epoch's colon is the
+        # case that actually turns up (release_tag maps a tilde), but the full
+        # rule is git's, and a hand-written character class kept missing parts
+        # of it: `*[:~^ ]*|*..*` accepted a version ending in `.lock` or in a
+        # bare dot, both of which git refuses. Absurd for a Debian version, and
         # that is the point -- the check should not depend on which absurd
         # cases were thought of.
         #
