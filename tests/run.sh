@@ -27,7 +27,7 @@ fail=0
 # The count goes through a file because a variable incremented in a subshell
 # never reaches this scope; traps reset in subshells, so the cleanup fires once.
 # Update the number deliberately: that edit is someone noticing it moved.
-EXPECTED_ASSERTIONS=235
+EXPECTED_ASSERTIONS=237
 TALLY="$(mktemp)"
 trap 'rm -f "$TALLY"' EXIT
 
@@ -166,6 +166,12 @@ echo "upstream bump"
     make_pkg "$work/p4" pre 0.4.0 "3.0 (quilt)"
     ( bump "$work/p4" v0.4.0-dev.53 >/dev/null 2>&1 )
     eq "a pre-release after its own release is refused" "4" "$?"
+    for t in v1.0.0-testing.1 v1.0.0-haus.2; do
+        make_pkg "$work/q" pre 0.9.0 "3.0 (quilt)"
+        ( bump "$work/q" "$t" >/dev/null 2>&1 )
+        eq "a pre-release spelled like a suite qualifier is refused ($t)" "4" "$?"
+        rm -rf "$work/q"
+    done
 
     rm -rf "$work"
     exit $((fail > 0))

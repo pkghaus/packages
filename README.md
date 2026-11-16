@@ -87,9 +87,9 @@ A scheduled workflow checks every enrolled package against its upstream every
 six hours, and lands a commit on `master` for each one that has fallen behind.
 That commit rewrites `package.conf`'s `VERSION` and adds a `debian/changelog`
 entry, and nothing else. `VERSION` takes upstream's tag verbatim; the changelog
-takes it without its prefix, and with a SemVer pre-release's hyphen written as
-`~` so it sorts below the release it precedes: `v1.2.3-rc.1` becomes
-`1.2.3~rc.1-1`.
+takes it without its prefix, and with its first hyphen, which starts a SemVer
+pre-release, written as `~` so it sorts below the release it precedes:
+`v1.2.3-rc.1` becomes `1.2.3~rc.1-1`.
 
 **Every upstream tag is tracked.** There is no staleness threshold and no
 filtering: a different tag string from the one in `package.conf` is the whole
@@ -113,10 +113,11 @@ upstream, so a tag lookup says nothing about it), and one whose upstream lookup
 fails, which the dashboard lists rather than treating as up to date. Only
 GitHub is sent the workflow's token; Codeberg is asked anonymously.
 
-The bump also refuses, rather than guesses, three things: a tag that is not a
-plain version tag, a package carrying an epoch, and any move that is not
-strictly forward. A downgrade is the one mistake here a reviewer skimming a
-two-line diff would not catch.
+The bump also refuses, rather than guesses, four things: a tag that is not a
+plain version tag, a package carrying an epoch, an upstream version containing
+`~haus` or `~testing` (the archive finds a build's suite by those), and any
+move that is not strictly forward. A downgrade is the one mistake here a
+reviewer skimming a two-line diff would not catch.
 
 ### Nothing approves a bump
 
