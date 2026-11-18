@@ -27,7 +27,7 @@ fail=0
 # The count goes through a file because a variable incremented in a subshell
 # never reaches this scope; traps reset in subshells, so the cleanup fires once.
 # Update the number deliberately: that edit is someone noticing it moved.
-EXPECTED_ASSERTIONS=237
+EXPECTED_ASSERTIONS=255
 TALLY="$(mktemp)"
 trap 'rm -f "$TALLY"' EXIT
 
@@ -213,16 +213,21 @@ echo "bump plan"
 
     # A package the plan could not check is not a current one. It stays out of
     # the matrix and goes on the skipped list, which the dashboard renders.
+    # lost fails with upstream.sh's one-line cause; mute, checked right after,
+    # fails without one and must not inherit lost's.
     mk lost v1.0.0
-    printf 'behind\ncurrent\nlost\nghost\n' > "$work/packages.txt"
-    latest_tag() { case "$1" in x/behind) echo v1.2.0 ;; x/current) echo v2.0.0 ;; x/lost) return 1 ;; *) echo v9 ;; esac; }
+    mk mute v1.0.0
+    printf 'behind\ncurrent\nlost\nmute\nghost\n' > "$work/packages.txt"
+    latest_tag() { case "$1" in x/behind) echo v1.2.0 ;; x/current) echo v2.0.0 ;;
+        x/lost) echo 'codeberg.org did not resolve' > "$UPSTREAM_CAUSE_FILE"; return 1 ;;
+        x/mute) return 1 ;; *) echo v9 ;; esac; }
     eq "a failed lookup stays out of the matrix" '[{"package":"behind","tag":"v1.2.0"}]' \
        "$(plan "$work/skipped.json" 2>/dev/null)"
-    eq "  and is on the skipped list with its reason, as is a missing directory" \
-       '[{"package":"lost","reason":"upstream lookup failed for github.com/x/lost; the plan log names the cause"},{"package":"ghost","reason":"no package.conf"}]' \
+    eq "  and is on the skipped list with its cause, as is a missing directory" \
+       '[{"package":"lost","reason":"codeberg.org did not resolve"},{"package":"mute","reason":"upstream lookup failed for github.com/x/mute"},{"package":"ghost","reason":"no package.conf"}]' \
        "$(cat "$work/skipped.json")"
     eq "  and is still logged" "1" \
-       "$(plan 2>&1 >/dev/null | grep -c '^SKIP lost: upstream lookup failed')"
+       "$(plan 2>&1 >/dev/null | grep -c '^SKIP lost: codeberg.org did not resolve$')"
 
     # Rewritten every run: a stale list would keep naming a package that is fine.
     printf 'behind\ncurrent\n' > "$work/packages.txt"
@@ -246,6 +251,8 @@ echo "upstream lookup: absent and unreachable are different answers"
     # action-debian-build lowering CLONE_ATTEMPTS in its retry test.
     export UPSTREAM_ATTEMPTS=1
     unset GH_TOKEN GITHUB_TOKEN
+    # The one-line cause the dashboard shows. Emptied before each check of it.
+    export UPSTREAM_CAUSE_FILE="$bin/cause"
 
     # A gh that logs what it was asked and answers per-path. Reproduces the
     # shape captured from the real one: the error JSON on STDOUT, the message
@@ -275,13 +282,25 @@ FAKE
     # port -- which tests the failure path and nothing else.
     # It also logs any Authorization header, and with CURL_REJECT_AUTH=1 answers
     # one with 401, which is what codeberg.org does with a GitHub token.
+    # CURL_FAIL=<exit code> fails the transfer the way real curl -sS does,
+    # message and all (captured live; 6 from codeberg.org on 2026-11-18).
     cat > "$bin/curl" <<'FAKE'
 #!/bin/sh
 auth=no
 for a in "$@"; do case "$a" in http*) url="$a" ;; Authorization:*) auth=yes ;; esac; done
 printf '%s\n' "curl $url" >> "$ASKED"
 [ "$auth" = yes ] && printf '%s\n' "auth $url" >> "$ASKED"
-[ "${CURL_FAIL:-0}" = 1 ] && exit 7
+if [ -n "${CURL_FAIL:-}" ]; then
+    h="${url#*://}"; h="${h%%[:/]*}"
+    case "$CURL_FAIL" in
+      6)  echo "curl: (6) Could not resolve host: $h" >&2 ;;
+      7)  echo "curl: (7) Failed to connect to $h:1 after 0 ms: Could not connect to server" >&2 ;;
+      28) echo "curl: (28) Connection timed out after 10001 milliseconds" >&2 ;;
+      *)  echo "curl: ($CURL_FAIL) other" >&2 ;;
+    esac
+    printf '\n000'
+    exit "$CURL_FAIL"
+fi
 if [ "$auth" = yes ] && [ "${CURL_REJECT_AUTH:-0}" = 1 ]; then
     printf '%s\n%s' '{"message":"invalid token"}' 401
     exit 0
@@ -314,11 +333,19 @@ FAKE
     out="$(api "repos/x/y/releases/latest")" && rc=0 || rc=$?
     eq "a 404 is exit 3, not a generic failure" "3" "$rc"
     eq "and the error document is NOT passed off as a body" "" "$out"
+    : > "$UPSTREAM_CAUSE_FILE"
+    eq "  and logs nothing: absent is an answer" "" \
+       "$(api "repos/x/y/releases/latest" 2>&1 >/dev/null)"
+    eq "  and writes no cause" "" "$(cat "$UPSTREAM_CAUSE_FILE")"
 
     GH_404_PATH="__none__" GH_FAIL_PATH="releases/latest"
     out="$(api "repos/x/y/releases/latest")" && rc=0 || rc=$?
     eq "a 502 is exit 1, distinct from absent" "1" "$rc"
     eq "and it leaks no body either" "" "$out"
+    eq "  and the log has gh's error" "1" \
+       "$(api "repos/x/y/releases/latest" 2>&1 >/dev/null | grep -c '^gh: Internal Server Error (HTTP 502)$')"
+    eq "  and the cause is one line" "github.com: Internal Server Error (HTTP 502)" \
+       "$(cat "$UPSTREAM_CAUSE_FILE")"
 
     GH_404_PATH="__none__" GH_FAIL_PATH="__none__" GH_BODY='{"tag_name":"v3.2.1"}'
     out="$(api "repos/x/y/releases/latest")" && rc=0 || rc=$?
@@ -415,6 +442,8 @@ FAKE
     # which would report a real package as having no upstream release at all.
     out="$(forge_api_base git.example.invalid 2>/dev/null)" && rc=0 || rc=$?
     eq "an unknown forge is a failure, not a guess" "1" "$rc"
+    eq "  and the cause names the host" "unknown forge host git.example.invalid" \
+       "$(cat "$UPSTREAM_CAUSE_FILE")"
     eq "  and yields no base URL" "" "$out"
 
     eq "github.com maps to the API host" "https://api.github.com" "$(forge_api_base github.com)"
@@ -435,6 +464,9 @@ FAKE
     err="$(latest_tag x/y 2>&1 >/dev/null)" && rc=0 || rc=$?
     eq "an unreadable tag list fails" "1" "$rc"
     eq "  and names the cause" "1" "$(printf '%s' "$err" | grep -c 'cannot read the tag list')"
+    eq "  and the log has git's error" "1" "$(printf '%s' "$err" | grep -c '^fatal: repository not found$')"
+    eq "  and the cause is one line" "could not read the tag list from github.com" \
+       "$(cat "$UPSTREAM_CAUSE_FILE")"
 
     # No tags at all is unresolvable, but NOT a read failure -- different
     # states, and conflating them is the bug this file keeps being about.
@@ -443,6 +475,8 @@ FAKE
     eq "a project with no tags is unresolvable" "1" "$rc"
     eq "  and is not reported as a read failure" "0" \
        "$(printf '%s' "$err" | grep -c 'cannot read')"
+    eq "  and the cause says what is missing" "github.com/x/y has no release or tag" \
+       "$(cat "$UPSTREAM_CAUSE_FILE")"
 
     # And the API is not consulted for tags any more.
     : > "$log"
@@ -469,14 +503,23 @@ FAKE
     eq "curl path: 404 is exit 3" "3" "$rc"
     eq "curl path: no body on a 404" "" "$out"
 
+    : > "$UPSTREAM_CAUSE_FILE"
+    eq "curl path: a 404 logs nothing" "" \
+       "$(PATH="$bin" api "repos/x/y/releases/latest" 2>&1 >/dev/null)"
+    eq "  and writes no cause" "" "$(cat "$UPSTREAM_CAUSE_FILE")"
+
     CURL_BODY='{"message":"boom"}' CURL_STATUS=500
     out="$(PATH="$bin" api "repos/x/y/releases/latest")" && rc=0 || rc=$?
     eq "curl path: 500 is exit 1" "1" "$rc"
+    eq "  and the log has the URL, status and body" "1" \
+       "$(PATH="$bin" api "repos/x/y/releases/latest" 2>&1 >/dev/null \
+          | grep -c '^upstream GET http://127.0.0.1:1/repos/x/y/releases/latest: HTTP 500: {"message":"boom"}$')"
+    eq "  and the cause is one line" "github.com answered HTTP 500" "$(cat "$UPSTREAM_CAUSE_FILE")"
 
-    # A transport failure (curl exit 7) is a refusal, not "no releases": it
+    # A transport failure (curl exit 6) is a refusal, not "no releases": it
     # must not reach the tag-list fallback. The status and body are a valid
     # release, so only CURL_FAIL can account for the refusal.
-    CURL_BODY='{"tag_name":"v9.9.9"}' CURL_STATUS=200 CURL_FAIL=1
+    CURL_BODY='{"tag_name":"v9.9.9"}' CURL_STATUS=200 CURL_FAIL=6
     out="$(PATH="$bin" api "repos/x/y/releases/latest")" && rc=0 || rc=$?
     eq "curl path: a transport failure is exit 1" "1" "$rc"
     : > "$log"
@@ -484,6 +527,14 @@ FAKE
     eq "curl path: a transport failure refuses to resolve" "1" "$rc"
     eq "  and names releases/latest" "1" \
        "$(printf '%s' "$err" | grep -c 'cannot reach releases/latest')"
+    eq "  and the log has curl's error" "1" \
+       "$(printf '%s' "$err" | grep -c '^curl: (6) Could not resolve host: 127.0.0.1$')"
+    eq "  and the cause is one line" "github.com did not resolve" "$(cat "$UPSTREAM_CAUSE_FILE")"
+    for c in "7:could not connect to github.com" "28:github.com timed out" \
+             "35:curl failed against github.com (exit 35)"; do
+        CURL_FAIL="${c%%:*}" PATH="$bin" api "repos/x/y/releases/latest" >/dev/null 2>&1 || true
+        eq "curl path: exit ${c%%:*} reads as \"${c#*:}\"" "${c#*:}" "$(cat "$UPSTREAM_CAUSE_FILE")"
+    done
     eq "  and the tag list was not consulted" "0" "$(grep -c 'ls-remote' "$log")"
     unset CURL_FAIL
 
@@ -497,6 +548,7 @@ FAKE
     err="$(PATH="$bin" latest_tag x/y 2>&1 >/dev/null)" && rc=0 || rc=$?
     eq "curl path: no jq refuses to resolve" "1" "$rc"
     eq "  and says jq is required" "1" "$(printf '%s' "$err" | grep -c 'jq is required')"
+    eq "  and the cause says so" "jq is not installed" "$(cat "$UPSTREAM_CAUSE_FILE")"
     eq "  and the tag list was not consulted" "0" "$(grep -c 'ls-remote' "$log")"
 
     CURL_BODY='{"tag_name":"v1.2.3"}' CURL_STATUS=200
@@ -915,12 +967,12 @@ echo "drift dashboard"
 
     # Packages the plan could not check. Without these the issue closed saying
     # every package was current while zig had never been asked about.
-    lost='[{"package":"zig","reason":"upstream lookup failed for codeberg.org/ziglang/zig; the plan log names the cause"}]'
+    lost='[{"package":"zig","reason":"codeberg.org did not resolve"}]'
     eq "an unchecked package alone produces a body" "1" \
        "$(render '[]' '' '[]' yes "$lost" | grep -c '^### Not checked against upstream')"
     eq "  naming the package and its reason" "1" \
        "$(render '[]' '' '[]' yes "$lost" \
-          | grep -c '^| `zig` | upstream lookup failed for codeberg.org/ziglang/zig; the plan log names the cause |$')"
+          | grep -c '^| `zig` | codeberg.org did not resolve |$')"
     eq "  on an unverified run too, whose plan still ran" "1" \
        "$(render '[]' '' '[]' no "$lost" | grep -c '^| `zig` |')"
     eq "nothing skipped renders no such table" "0" \
