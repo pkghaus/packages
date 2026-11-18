@@ -49,6 +49,14 @@
 # it, so a flag on that call would never fire where it matters.
 UPSTREAM_ATTEMPTS="${UPSTREAM_ATTEMPTS:-3}"
 
+# A failed lookup gives two accounts: the tool's own error on stderr for the run
+# log, and one line in $UPSTREAM_CAUSE_FILE for the dashboard (plan-bumps.sh).
+# A file because every caller reads these functions through a command
+# substitution, which no variable survives. A 404 writes none: it is an answer.
+upstream_cause() {
+    printf '%s\n' "$1" > "${UPSTREAM_CAUSE_FILE:-/dev/null}"
+}
+
 # Which forge a package lives on. Everything below takes an optional host that
 # defaults to github.com, so every existing caller and test is unchanged.
 #
@@ -68,7 +76,9 @@ forge_api_base() {
     case "$1" in
         github.com)   printf 'https://api.github.com' ;;
         codeberg.org) printf 'https://codeberg.org/api/v1' ;;
-        *)            printf 'upstream: unknown forge host %s\n' "$1" >&2; return 1 ;;
+        *)            printf 'upstream: unknown forge host %s\n' "$1" >&2
+                      upstream_cause "unknown forge host $1"
+                      return 1 ;;
     esac
 }
 
@@ -83,8 +93,8 @@ api() {
         if [ "$rc" -eq 3 ] || [ "$attempt" -ge "$UPSTREAM_ATTEMPTS" ]; then
             return "$rc"
         fi
-        printf 'upstream %s: attempt %s/%s failed; retrying in %ss\n' \
-            "$path" "$attempt" "$UPSTREAM_ATTEMPTS" "$delay" >&2
+        printf 'upstream %s %s: attempt %s/%s failed; retrying in %ss\n' \
+            "$host" "$path" "$attempt" "$UPSTREAM_ATTEMPTS" "$delay" >&2
         sleep "$delay"
         attempt=$((attempt + 1))
         delay=$((delay * 2))
@@ -92,7 +102,7 @@ api() {
 }
 
 _api_once() {
-    local path="$1" host="${2:-github.com}" body errfile rc status base
+    local path="$1" host="${2:-github.com}" body errfile rc status base msg
     local -a auth=()
 
     # gh speaks GitHub and nothing else, so it is skipped for any other forge.
@@ -106,6 +116,10 @@ _api_once() {
         rc=1
         if grep -q '(HTTP 404)' "$errfile"; then
             rc=3
+        else
+            cat "$errfile" >&2
+            msg="$(head -n1 "$errfile")"
+            upstream_cause "github.com: ${msg#gh: }"
         fi
         rm -f "$errfile"
         return "$rc"
@@ -129,16 +143,28 @@ _api_once() {
     # requested "/repos/..." with no host at all.
     base="${API_BASE:-$(forge_api_base "$host")}" || return 1
 
+    # curl's stderr is left alone: -sS prints only a failure, and that line
+    # ("Could not resolve host: codeberg.org") is the run log's account.
     body="$(curl -sSL --connect-timeout 10 --max-time 30 \
         "${auth[@]}" -H "Accept: application/json" \
-        -w '\n%{http_code}' "$base/$path" 2>/dev/null)" || return 1
+        -w '\n%{http_code}' "$base/$path")" && rc=0 || rc=$?
+    case "$rc" in
+        0)  ;;
+        6)  upstream_cause "$host did not resolve"; return 1 ;;
+        7)  upstream_cause "could not connect to $host"; return 1 ;;
+        28) upstream_cause "$host timed out"; return 1 ;;
+        *)  upstream_cause "curl failed against $host (exit $rc)"; return 1 ;;
+    esac
 
     status="${body##*$'\n'}"
     body="${body%$'\n'*}"
     case "$status" in
         2??) printf '%s' "$body"; return 0 ;;
         404) return 3 ;;
-        *)   return 1 ;;
+        *)   printf 'upstream GET %s: HTTP %s: %.300s\n' \
+                 "$base/$path" "$status" "${body//$'\n'/ }" >&2
+             upstream_cause "$host answered HTTP $status"
+             return 1 ;;
     esac
 }
 # Every tag the remote has, one per line.
@@ -165,7 +191,7 @@ _api_once() {
 upstream_tags() {
     local repo="$1" host="${2:-github.com}" refs
     refs="$(GIT_TERMINAL_PROMPT=0 git ls-remote --tags \
-        "https://$host/$repo" 2>/dev/null)" || return 1
+        "https://$host/$repo")" || return 1
 
     printf '%s\n' "$refs" | awk '
         $2 !~ /\^\{\}$/ { sub(/^refs\/tags\//, "", $2); if ($2 != "") print $2 }'
@@ -187,7 +213,8 @@ latest_tag() {
             # Without jq the parse would be empty and silently fall through
             # to the tag list, which includes prereleases.
             command -v jq >/dev/null 2>&1 \
-                || { echo "upstream.sh: jq is required" >&2; return 1; }
+                || { echo "upstream.sh: jq is required" >&2
+                     upstream_cause "jq is not installed"; return 1; }
             tag="$(printf '%s' "$body" | jq -r '.tag_name // empty')"
             if [ -n "$tag" ]; then
                 printf '%s\n' "$tag"
@@ -207,6 +234,7 @@ latest_tag() {
     local tags
     tags="$(upstream_tags "$repo" "$host")" || {
         printf 'upstream: cannot read the tag list for %s\n' "$repo" >&2
+        upstream_cause "could not read the tag list from $host"
         return 1
     }
 
@@ -217,5 +245,7 @@ latest_tag() {
         printf '%s\n' "$tag"
         return 0
     fi
+    printf 'upstream: %s/%s has no release or tag\n' "$host" "$repo" >&2
+    upstream_cause "$host/$repo has no release or tag"
     return 1
 }

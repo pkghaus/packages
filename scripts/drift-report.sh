@@ -115,7 +115,7 @@ rows = json.load(sys.stdin)
 if rows:
     print("### Not checked against upstream")
     print()
-    print("The plan could not check these against upstream, so nothing here can say whether they are behind, and nothing was bumped. The run log names each cause.")
+    print("The plan could not check these against upstream, so nothing here can say whether they are behind, and nothing was bumped. The run log has each full error.")
     print()
     print("| package | reason |")
     print("|---|---|")

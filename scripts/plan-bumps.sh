@@ -39,7 +39,8 @@ plan_skip() { # package reason
 # The loop is a function so tests can source this file and override latest_tag.
 # Everything above is definitions, everything below runs.
 plan() {
-    local skipped_file="${1:-}" rows="" skipped="" pkg conf ours upstream_url host slug newest
+    local skipped_file="${1:-}" rows="" skipped="" pkg conf ours upstream_url host slug newest cause_file
+    cause_file="$(mktemp)"
     while read -r pkg || [ -n "$pkg" ]; do
         case "$pkg" in ''|\#*) continue ;; esac
         pkg="${pkg%%[[:space:]]*}"
@@ -66,17 +67,20 @@ plan() {
         [ -n "$ours" ] && [ -n "$slug" ] || { plan_skip "$pkg" "package.conf incomplete"; continue; }
 
         # A lookup that fails is not a package that is current. Recorded and
-        # skipped rather than silently treated as up to date. latest_tag has
-        # already logged the cause, which the reason points at.
-        newest="$(latest_tag "$slug" "$host" || true)"
+        # skipped rather than silently treated as up to date, with upstream.sh's
+        # one-line cause; the full error is already in the log above.
+        : > "$cause_file"
+        newest="$(UPSTREAM_CAUSE_FILE="$cause_file" latest_tag "$slug" "$host" || true)"
         [ -n "$newest" ] || {
-            plan_skip "$pkg" "upstream lookup failed for $host/$slug; the plan log names the cause"
+            plan_skip "$pkg" "$(head -n1 "$cause_file" | grep . \
+                || echo "upstream lookup failed for $host/$slug")"
             continue
         }
         [ "$ours" != "$newest" ] || continue
 
         rows="$rows,{\"package\":\"$(json_escape "$pkg")\",\"tag\":\"$(json_escape "$newest")\"}"
     done < "$PACKAGES_FILE"
+    rm -f "$cause_file"
 
     if [ -n "$skipped_file" ]; then
         printf '[%s]\n' "${skipped#,}" > "$skipped_file"
