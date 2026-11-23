@@ -1,3 +1,10 @@
+bluetui (0.8.3-1) unstable; urgency=medium
+
+  * New upstream release
+  * A missing --config file is no longer an error: bluetui starts on defaults.
+
+ -- pkg.haus archive <archive@pkg.haus>  Mon, 23 Nov 2026 08:48:36 +0100
+
 bluetui (0.8.2-1) unstable; urgency=medium
 
   * New upstream release
