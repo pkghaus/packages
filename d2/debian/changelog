@@ -1,3 +1,9 @@
+d2 (0.10.0-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Fri, 27 Nov 2026 21:17:53 +0000
+
 d2 (0.9.0-3) unstable; urgency=medium
 
   * Recommend ca-certificates: a diagram with a remote image or icon failed
