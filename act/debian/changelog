@@ -1,3 +1,9 @@
+act (0.2.99-1) unstable; urgency=medium
+
+  * New upstream release
+
+ -- pkg.haus archive <archive@pkg.haus>  Sat, 28 Nov 2026 07:46:30 +0000
+
 act (0.2.98-1) unstable; urgency=medium
 
   * New upstream release
